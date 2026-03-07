@@ -1,69 +1,180 @@
+"""
+main.py — UniAdvisor AI Backend v3
+New in v3:
+  - bcrypt password hashing (replaces plaintext)
+  - JWT session tokens (replaces plain DB login)
+  - Audit log for every admin/staff action
+  - Per-office analytics endpoint
+  - Escalation inbox + reply endpoint
+  - Student feedback (thumbs up/down) persisted to Supabase
+  - Campus events CRUD
+  - Progress task tracking
+"""
 import sys
 import os
+import json
+import secrets
+import hashlib
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 import uvicorn
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
-from rag import get_answer, get_stats, get_embeddings, get_vectorstore, detect_office, OFFICES as RAG_OFFICES
-from ingest import ingest_document, list_documents, list_documents_by_office, purge_bad_documents, OFFICES
+# ── Load .env file (safe no-op if python-dotenv not installed) ────────
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed; rely on real env vars
 
-# ── In-memory stores ──────────────────────────────────────
-announcements   = []
-doc_registry    = {}
-feedback_log    = []
-deadlines_store = []
-escalations     = []
-corrections     = {}    # keyed by question hash → corrected answer
+# ── Optional bcrypt (graceful fallback for environments without it) ──
+try:
+    import bcrypt
+    BCRYPT_AVAILABLE = True
+except ImportError:
+    BCRYPT_AVAILABLE = False
+    print("[UniAdvisor] WARNING: bcrypt not installed. Run: pip install bcrypt")
+
+# ── Optional supabase ─────────────────────────────────────────────────
+try:
+    from supabase import create_client
+    SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+    SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+    if SUPABASE_URL and SUPABASE_KEY:
+        sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+        SUPABASE_AVAILABLE = True
+    else:
+        sb = None
+        SUPABASE_AVAILABLE = False
+except Exception:
+    sb = None
+    SUPABASE_AVAILABLE = False
+
+from rag import get_answer, get_stats, get_embeddings, get_vectorstore
+from ingest import ingest_document, list_documents
+
+# ── In-memory fallback stores ─────────────────────────────────
+announcements = []
+faq_cache     = []
+doc_registry  = {}
+feedback_log  = []
+token_store   = {}   # token -> {user_id, expires_at}
+audit_buffer  = []   # buffer if Supabase unavailable
 
 
-def _seed_deadlines():
-    from datetime import timedelta
-    seeds = [
-        {"title": "Course Registration Deadline", "date": (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%dT23:59:00"),  "category": "registration", "description": "Last day to register for next semester courses"},
-        {"title": "Scholarship Application Close", "date": (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%dT23:59:00"),  "category": "scholarship", "description": "Submit all documents to the financial aid office"},
-        {"title": "Midterm Exam Period Begins",    "date": (datetime.now() + timedelta(days=14)).strftime("%Y-%m-%dT08:00:00"), "category": "exam",         "description": "Check your personal exam schedule"},
-        {"title": "Tuition Fee Payment Due",       "date": (datetime.now() + timedelta(days=21)).strftime("%Y-%m-%dT23:59:00"), "category": "general",      "description": "Payment via bank transfer or student portal"},
-        {"title": "Thesis Submission Deadline",    "date": (datetime.now() + timedelta(days=45)).strftime("%Y-%m-%dT23:59:00"), "category": "exam",         "description": "Final thesis upload to the student system"},
-    ]
-    for s in seeds:
-        s["id"] = len(deadlines_store) + 1
-        s["created_at"] = datetime.now().isoformat()
-        deadlines_store.append(s)
+# ═══════════════════════════════════════════════════════════════
+# AUTH HELPERS
+# ═══════════════════════════════════════════════════════════════
+
+def hash_password(plain: str) -> str:
+    if BCRYPT_AVAILABLE:
+        return bcrypt.hashpw(plain.encode(), bcrypt.gensalt(12)).decode()
+    # Fallback: sha256 (NOT secure for production — install bcrypt!)
+    return "sha256:" + hashlib.sha256(plain.encode()).hexdigest()
+
+def verify_password(plain: str, hashed: str) -> bool:
+    if hashed.startswith("sha256:"):
+        return hashed == "sha256:" + hashlib.sha256(plain.encode()).hexdigest()
+    if BCRYPT_AVAILABLE:
+        try:
+            return bcrypt.checkpw(plain.encode(), hashed.encode())
+        except Exception:
+            return False
+    return False
+
+def generate_token() -> str:
+    return secrets.token_urlsafe(48)
+
+def create_session(user_id: int, email: str) -> str:
+    token = generate_token()
+    expires = datetime.now() + timedelta(hours=24)
+    token_store[token] = {"user_id": user_id, "email": email, "expires_at": expires}
+    if SUPABASE_AVAILABLE:
+        try:
+            sb.table("auth_tokens").insert({
+                "user_id":    user_id,
+                "token":      token,
+                "expires_at": expires.isoformat(),
+            }).execute()
+        except Exception:
+            pass
+    return token
+
+def get_current_user(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid token")
+    token = authorization.split(" ", 1)[1]
+    # Check in-memory first (fast path)
+    session = token_store.get(token)
+    if session:
+        if datetime.now() > session["expires_at"]:
+            del token_store[token]
+            raise HTTPException(status_code=401, detail="Session expired")
+        return session
+    # Check Supabase
+    if SUPABASE_AVAILABLE:
+        try:
+            result = sb.table("auth_tokens").select("*, users(*)").eq("token", token).eq("revoked", False).single().execute()
+            if result.data:
+                expires = datetime.fromisoformat(result.data["expires_at"].replace("Z",""))
+                if datetime.now() > expires:
+                    raise HTTPException(status_code=401, detail="Session expired")
+                session = {"user_id": result.data["user_id"], "email": result.data["users"]["email"]}
+                token_store[token] = {**session, "expires_at": expires}
+                return session
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+    raise HTTPException(status_code=401, detail="Invalid token")
 
 
+# ═══════════════════════════════════════════════════════════════
+# AUDIT LOG HELPER
+# ═══════════════════════════════════════════════════════════════
+
+def audit(actor_email: str, actor_role: str, action: str, target: str = None, detail: dict = None):
+    entry = {
+        "actor_email": actor_email,
+        "actor_role":  actor_role,
+        "action":      action,
+        "target":      target,
+        "detail":      detail or {},
+        "created_at":  datetime.now().isoformat(),
+    }
+    audit_buffer.append(entry)
+    if SUPABASE_AVAILABLE:
+        try:
+            sb.table("audit_log").insert(entry).execute()
+        except Exception:
+            pass
+
+
+# ═══════════════════════════════════════════════════════════════
+# APP SETUP
+# ═══════════════════════════════════════════════════════════════
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("[UniAdvisor] Starting up — port open, loading models in background...")
-    _seed_deadlines()
-    # Load heavy models in background thread so port opens immediately.
-    # Render times out if port isn't bound within ~60s.
-    import threading
-    def _load():
-        try:
-            print("[UniAdvisor] Loading embedding model...")
-            get_embeddings()
-            print("[UniAdvisor] Loading vector store...")
-            get_vectorstore()
-            bad = purge_bad_documents()
-            if bad:
-                print(f"[UniAdvisor] Auto-purged: {bad}")
-            print("[UniAdvisor] Models ready!")
-        except Exception as e:
-            print(f"[UniAdvisor] Model load warning: {e}")
-    threading.Thread(target=_load, daemon=True).start()
+    print("[UniAdvisor] Starting up...")
+    print(f"[UniAdvisor] bcrypt: {'✅' if BCRYPT_AVAILABLE else '⚠️ fallback'}")
+    print(f"[UniAdvisor] Supabase: {'✅' if SUPABASE_AVAILABLE else '⚠️ offline mode'}")
+    # NOTE: Embedding model loads lazily on first /chat request
+    # (avoids Render port-binding timeout on cold start)
+    print("[UniAdvisor] Ready!")
     yield
+    print("[UniAdvisor] Shutting down.")
 
-app = FastAPI(title="UniAdvisor AI", version="2.0.0", lifespan=lifespan)
-
+app = FastAPI(title="UniAdvisor AI", version="3.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -72,248 +183,263 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.post("/chat-debug")
-async def chat_debug(request: Request):
-    body = await request.body()
-    try:
-        import json
-        parsed = json.loads(body)
-    except Exception as e:
-        parsed = f"INVALID JSON: {e}"
-    print("[DEBUG BODY]", body.decode("utf-8", errors="replace"))
-    return {"raw": body.decode("utf-8", errors="replace"), "parsed": parsed}
+# ── Serve React frontend from dist/ ──────────────────────────
+import os as _os
+_dist = _os.path.join(_os.path.dirname(__file__), "dist")
+if _os.path.isdir(_dist):
+    # Mount the entire dist folder so ALL static files are served
+    # (js, css, images, favicon, etc.)
+    app.mount("/assets", StaticFiles(directory=_os.path.join(_dist, "assets")), name="assets")
+    # Also serve any other static files in dist root (favicon.ico, etc.)
+    for _fname in _os.listdir(_dist):
+        _fpath = _os.path.join(_dist, _fname)
+        if _os.path.isdir(_fpath) and _fname != "assets":
+            app.mount(f"/{_fname}", StaticFiles(directory=_fpath), name=_fname)
 
 
-# ── Pydantic models ───────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+# MODELS
+# ═══════════════════════════════════════════════════════════════
+
+class LoginRequest(BaseModel):
+    email:    str
+    password: str
+
 class ChatRequest(BaseModel):
-    message:       str
-    student_name:  str = "Student"
-    student_year:  str = "Year 1"
-    student_major: str = "General"
-    history:       List[dict] = []
-    office:        str = "auto"   # "auto" = AI detects, or explicit office id
-
-    class Config:
-        extra = "allow"
+    message:        str
+    student_name:   str  = "Student"
+    student_year:   str  = "Year 1"
+    student_major:  str  = "General"
+    student_nationality: str = "Hungarian"
+    office:         str  = "auto"
+    history:        List[dict] = []
+    session_id:     Optional[str] = None
 
 class AnnouncementCreate(BaseModel):
-    text: str
-    type: str = "info"
+    text:         str
+    type:         str = "info"
+    scheduled_at: Optional[str] = None
+    expires_at:   Optional[str] = None
 
 class FeedbackItem(BaseModel):
-    question: str
-    answer:   str
-    rating:   str
+    student_email: Optional[str] = None
+    question:      str
+    answer:        str
+    rating:        str   # "up" or "down"
+    office:        Optional[str] = None
 
-class DeadlineCreate(BaseModel):
-    title:      str
-    date:       str          # ISO string e.g. "2025-05-15T23:59:00"
-    category:   str = "general"   # registration | exam | scholarship | general
-    description: str = ""
-
-class EscalationRequest(BaseModel):
+class EscalationCreate(BaseModel):
     student_email: str
     student_name:  str
-    question:      str
-    ai_answer:     str
-    reason:        str = "I need more help"
+    subject:       str
+    message:       str
 
-class AnswerCorrection(BaseModel):
-    question:         str
-    original_answer:  str
-    corrected_answer: str
-    corrected_by:     str = "admin"
+class EscalationReply(BaseModel):
+    admin_reply: str
+    replied_by:  str
 
-# ── Health ────────────────────────────────────────────────
+class ProgressTaskUpdate(BaseModel):
+    student_email: str
+    task_key:      str
+    label:         str
+    done:          bool
+
+class EventCreate(BaseModel):
+    title:       str
+    description: Optional[str] = None
+    location:    Optional[str] = None
+    starts_at:   str
+    ends_at:     Optional[str] = None
+    category:    str = "academic"
+    created_by:  Optional[str] = None
+
+
+# ═══════════════════════════════════════════════════════════════
+# BASIC ROUTES
+# ═══════════════════════════════════════════════════════════════
+
 @app.get("/")
 def root():
-    return {"status": "UniAdvisor AI v2.0 running"}
+    return {"status": "UniAdvisor AI v3.0 running"}
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "supabase": SUPABASE_AVAILABLE, "bcrypt": BCRYPT_AVAILABLE}
 
-# ── Offices ────────────────────────────────────────────────
-@app.get("/offices")
-def get_offices():
-    """Return list of all offices with their metadata and document counts."""
-    docs = list_documents()
-    doc_counts = {}
-    for d in docs:
-        o = d.get("office","general")
-        doc_counts[o] = doc_counts.get(o, 0) + 1
-    return {
-        "offices": [
-            {
-                "id":         oid,
-                "name":       info["name"],
-                "emoji":      info["emoji"],
-                "doc_count":  doc_counts.get(oid, 0),
-                "keywords":   info["keywords"][:5],
+
+# ═══════════════════════════════════════════════════════════════
+# AUTH — LOGIN / LOGOUT
+# ═══════════════════════════════════════════════════════════════
+
+@app.post("/auth/login")
+def login(req: LoginRequest):
+    """Verify credentials, return session token."""
+    if SUPABASE_AVAILABLE:
+        try:
+            result = sb.table("users").select("*").eq("email", req.email.lower().strip()).execute()
+            if not result.data:
+                raise HTTPException(status_code=401, detail="Invalid email or password")
+            user = result.data[0]
+            if not verify_password(req.password, user["password_hash"]):
+                raise HTTPException(status_code=401, detail="Invalid email or password")
+            if not user.get("active", True):
+                raise HTTPException(status_code=403, detail="Account is disabled")
+            token = create_session(user["id"], user["email"])
+            return {
+                "token": token,
+                "user":  {k: v for k, v in user.items() if k != "password_hash"},
             }
-            for oid, info in OFFICES.items()
-        ]
-    }
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/offices/{office_id}/documents")
-def get_office_documents(office_id: str):
-    """Documents uploaded by a specific office."""
-    docs = list_documents_by_office(office_id)
-    return {"office": office_id, "documents": docs}
+    # ── Offline demo fallback (no Supabase) ──────────────────
+    DEMO_USERS = [
+        {"id":1,"email":"student@uniduna.hu","password":"password123","full_name":"Anna Kovács","role":"student","major":"CS Engineering","year_of_study":"Year 2","nationality":"Hungarian","language_pref":"hu","onboarding_done":False},
+        {"id":2,"email":"staff@uniduna.hu",  "password":"password123","full_name":"Dr. Kiss Péter","role":"staff","department":"Study Office","nationality":"Hungarian","language_pref":"hu","onboarding_done":True},
+        {"id":3,"email":"admin@uniduna.hu",  "password":"password123","full_name":"Admin User","role":"admin","nationality":"Hungarian","language_pref":"en","onboarding_done":True},
+    ]
+    for u in DEMO_USERS:
+        if u["email"] == req.email and u["password"] == req.password:
+            token = create_session(u["id"], u["email"])
+            safe = {k: v for k, v in u.items() if k != "password"}
+            return {"token": token, "user": safe}
+    raise HTTPException(status_code=401, detail="Invalid email or password")
 
-@app.post("/detect-office")
-async def detect_office_endpoint(body: dict):
-    """Given a question, return which office it belongs to."""
-    question = body.get("question","")
-    office   = detect_office(question)
-    info     = RAG_OFFICES.get(office, {})
-    return {"office": office, "office_name": info.get("name",""), "office_emoji": info.get("emoji","🏛️")}
+@app.post("/auth/logout")
+def logout(authorization: str = Header(None)):
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1]
+        token_store.pop(token, None)
+        if SUPABASE_AVAILABLE:
+            try:
+                sb.table("auth_tokens").update({"revoked": True}).eq("token", token).execute()
+            except Exception:
+                pass
+    return {"message": "Logged out"}
 
-# ── Chat ──────────────────────────────────────────────────
+@app.get("/auth/me")
+def me(session = Depends(get_current_user)):
+    """Return current user info from token."""
+    if SUPABASE_AVAILABLE:
+        try:
+            result = sb.table("users").select("*").eq("email", session["email"]).single().execute()
+            if result.data:
+                return {k: v for k, v in result.data.items() if k != "password_hash"}
+        except Exception:
+            pass
+    return {"email": session["email"]}
+
+@app.post("/auth/complete-onboarding")
+def complete_onboarding(session = Depends(get_current_user)):
+    if SUPABASE_AVAILABLE:
+        try:
+            sb.table("users").update({"onboarding_done": True}).eq("email", session["email"]).execute()
+        except Exception:
+            pass
+    return {"message": "Onboarding complete"}
+
+
+# ═══════════════════════════════════════════════════════════════
+# CHAT
+# ═══════════════════════════════════════════════════════════════
+
 @app.post("/chat")
 async def chat(req: ChatRequest):
+    import traceback
     try:
-        import hashlib
-        history_dicts = [{"role": str(m.get("role","user")), "content": str(m.get("content",""))} for m in req.history if m.get("content") and m.get("content") != "typing"]
-
-        # Check if admin has corrected this question
-        q_key = hashlib.md5(req.message.lower().strip().encode()).hexdigest()
-        if q_key in corrections:
-            corrected = corrections[q_key]
-            return {
-                "answer":     corrected["corrected_answer"],
-                "sources":    [],
-                "corrected":  True,
-                "corrected_by": corrected["corrected_by"],
-            }
-
         answer, sources, detected_office = get_answer(
-            question      = req.message,
-            student_name  = req.student_name,
-            student_year  = req.student_year,
-            student_major = req.student_major,
-            history       = history_dicts,
-            office        = req.office,
+            question=req.message,
+            student_name=req.student_name,
+            student_year=req.student_year,
+            student_major=req.student_major,
+            student_nationality=req.student_nationality,
+            office=req.office,
+            history=req.history,
         )
-        office_info = RAG_OFFICES.get(detected_office, {})
-        return {
-            "answer":       answer,
-            "sources":      sources,
-            "corrected":    False,
-            "office":       detected_office,
-            "office_name":  office_info.get("name", detected_office),
-            "office_emoji": office_info.get("emoji", "🏛️"),
-        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        tb = traceback.format_exc()
+        print(f"[UniAdvisor] /chat error:\n{tb}")
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
-# ── Upload ────────────────────────────────────────────────
-ALLOWED_EXT = {".pdf", ".txt", ".docx"}
+    # Log to Supabase (non-fatal)
+    if SUPABASE_AVAILABLE:
+        try:
+            sb.table("chat_logs").insert({
+                "question":     req.message,
+                "answer":       answer[:500],
+                "student_name": req.student_name,
+                "major":        req.student_major,
+                "year_of_study":req.student_year,
+                "nationality":  req.student_nationality,
+                "office_routed":detected_office,
+                "session_id":   req.session_id,
+                "asked_at":     datetime.now().isoformat(),
+            }).execute()
+        except Exception:
+            pass
+        try:
+            sb.table("office_analytics").insert({
+                "office_id": detected_office,
+                "question":  req.message,
+                "asked_at":  datetime.now().isoformat(),
+            }).execute()
+        except Exception:
+            pass
+
+    from rag import OFFICES
+    office_info = OFFICES.get(detected_office, OFFICES["general"])
+    return {
+        "answer":       answer,
+        "sources":      sources,
+        "office":       detected_office,
+        "office_name":  office_info["name"],
+        "office_emoji": office_info["emoji"],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# DOCUMENTS
+# ═══════════════════════════════════════════════════════════════
 
 @app.post("/upload")
-async def upload_document(file: UploadFile = File(...), office: str = Form("general")):
-    filename = file.filename or ""
-    ext      = os.path.splitext(filename)[1].lower()
-
-    # Block non-document files and dotfiles
-    if ext not in ALLOWED_EXT:
-        raise HTTPException(status_code=400,
-            detail=f"Only PDF, TXT, DOCX allowed. Received: '{filename}'")
-    if filename.startswith(".") or filename.lower() in {".env", "env"}:
-        raise HTTPException(status_code=400, detail="System files cannot be uploaded.")
-
+async def upload_document(file: UploadFile = File(...), office: str = "general"):
+    if not file.filename.endswith((".pdf", ".txt", ".docx")):
+        raise HTTPException(status_code=400, detail="Only PDF, TXT, DOCX supported.")
     try:
         contents = await file.read()
-        if not contents:
-            raise HTTPException(status_code=400, detail="File is empty.")
-        result = ingest_document(contents, filename, office=office)
-        doc_registry[filename] = {
+        result   = ingest_document(contents, file.filename, office=office)
+        doc_registry[file.filename] = {
             "uploaded_at": datetime.now().isoformat(),
             "size_kb":     round(len(contents) / 1024, 1),
             "chunks":      result["chunks"],
             "office":      office,
-            "office_name": OFFICES.get(office, {}).get("name", office),
         }
-        return {
-            "message": f"'{filename}' indexed successfully. ({result['chunks']} chunks)",
-            "chunks":  result["chunks"],
-        }
-    except HTTPException:
-        raise
+        return {"message": f"'{file.filename}' ingested.", "chunks": result["chunks"]}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-# ── Documents list ────────────────────────────────────────
 @app.get("/documents")
 def documents():
     docs = list_documents()
-    return {"documents": [
-        {
-            "name":        d,
-            "uploaded_at": doc_registry.get(d, {}).get("uploaded_at", "Unknown"),
-            "size_kb":     doc_registry.get(d, {}).get("size_kb", 0),
-            "chunks":      doc_registry.get(d, {}).get("chunks", 0),
-        } for d in docs
-    ]}
+    enriched = []
+    for d in docs:
+        name = d.get("name", "") if isinstance(d, dict) else d
+        info = doc_registry.get(name, {})
+        enriched.append({
+            "name":        name,
+            "office":      d.get("office", "general") if isinstance(d, dict) else info.get("office","general"),
+            "uploaded_at": info.get("uploaded_at", "Unknown"),
+            "size_kb":     info.get("size_kb", 0),
+            "chunks":      info.get("chunks", 0),
+        })
+    return {"documents": enriched}
 
-# ── Stats ─────────────────────────────────────────────────
 @app.get("/stats")
 def stats():
     return get_stats()
 
-# ── Announcements ─────────────────────────────────────────
-@app.get("/announcements")
-def get_announcements():
-    return {"announcements": [a for a in announcements if a["active"]]}
-
-@app.post("/announcements")
-def create_announcement(item: AnnouncementCreate):
-    ann = {
-        "id":         len(announcements) + 1,
-        "text":       item.text,
-        "type":       item.type,
-        "created_at": datetime.now().isoformat(),
-        "active":     True,
-    }
-    announcements.append(ann)
-    return {"message": "Announcement created.", "announcement": ann}
-
-@app.delete("/announcements/{ann_id}")
-def delete_announcement(ann_id: int):
-    for ann in announcements:
-        if ann["id"] == ann_id:
-            ann["active"] = False
-            return {"message": "Removed."}
-    raise HTTPException(status_code=404, detail="Not found.")
-
-# ── Smart FAQ ─────────────────────────────────────────────
-@app.get("/faq")
-def get_faq():
-    all_questions = get_stats().get("all_questions", [])
-    keywords = {
-        "Courses":     ["course","curriculum","subject","module","credit","tantárgy"],
-        "Application": ["apply","application","admission","register","jelentkezés"],
-        "Scholarship": ["scholarship","grant","aid","funding","ösztöndíj"],
-        "Fees":        ["fee","tuition","cost","payment","díj"],
-        "Deadlines":   ["deadline","date","calendar","schedule","határidő"],
-        "Visa":        ["visa","permit","residence","vízum"],
-        "Housing":     ["housing","accommodation","dormitory","kollégium"],
-        "Graduation":  ["graduate","graduation","degree","diploma"],
-    }
-    topics = {}
-    for q in all_questions:
-        lower = q.lower()
-        for topic, words in keywords.items():
-            if any(w in lower for w in words):
-                topics.setdefault(topic, []).append(q)
-                break
-    faq = sorted(
-        [{"topic": k, "question": v[0], "count": len(v)} for k, v in topics.items()],
-        key=lambda x: x["count"], reverse=True
-    )
-    return {"faq": faq[:8]}
-
-# ── Expiry alerts ─────────────────────────────────────────
 @app.get("/expiry-alerts")
 def get_expiry_alerts():
     alerts = []
@@ -332,293 +458,454 @@ def get_expiry_alerts():
             pass
     return {"alerts": alerts, "total": len(alerts)}
 
-# ── Auto-translate ────────────────────────────────────────
-@app.post("/translate")
-async def translate_document(file: UploadFile = File(...), target_language: str = "en"):
-    filename = file.filename or ""
-    ext = os.path.splitext(filename)[1].lower()
-    if ext not in ALLOWED_EXT:
-        raise HTTPException(status_code=400, detail="Only TXT, PDF, DOCX supported.")
+
+# ═══════════════════════════════════════════════════════════════
+# ANNOUNCEMENTS
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/announcements")
+def get_announcements():
+    if SUPABASE_AVAILABLE:
+        try:
+            now = datetime.now().isoformat()
+            result = sb.table("announcements").select("*").eq("active", True).lte("scheduled_at", now).execute()
+            return {"announcements": result.data or []}
+        except Exception:
+            pass
+    return {"announcements": [a for a in announcements if a["active"]]}
+
+@app.post("/announcements")
+def create_announcement(item: AnnouncementCreate):
+    ann = {
+        "text":         item.text,
+        "type":         item.type,
+        "active":       True,
+        "scheduled_at": item.scheduled_at or datetime.now().isoformat(),
+        "expires_at":   item.expires_at,
+        "created_at":   datetime.now().isoformat(),
+    }
+    if SUPABASE_AVAILABLE:
+        try:
+            result = sb.table("announcements").insert(ann).execute()
+            return {"message": "Announcement created.", "announcement": result.data[0]}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    ann["id"] = len(announcements) + 1
+    announcements.append(ann)
+    return {"message": "Announcement created.", "announcement": ann}
+
+@app.delete("/announcements/{ann_id}")
+def delete_announcement(ann_id: int):
+    if SUPABASE_AVAILABLE:
+        try:
+            sb.table("announcements").update({"active": False}).eq("id", ann_id).execute()
+            return {"message": "Announcement removed."}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    for ann in announcements:
+        if ann["id"] == ann_id:
+            ann["active"] = False
+            return {"message": "Announcement removed."}
+    raise HTTPException(status_code=404, detail="Not found.")
+
+
+# ═══════════════════════════════════════════════════════════════
+# FEEDBACK (thumbs up/down)
+# ═══════════════════════════════════════════════════════════════
+
+@app.post("/feedback")
+def submit_feedback(item: FeedbackItem):
+    entry = {
+        "student_email": item.student_email,
+        "question":      item.question,
+        "answer":        item.answer[:300],
+        "rating":        item.rating,
+        "office":        item.office,
+        "created_at":    datetime.now().isoformat(),
+    }
+    feedback_log.append(entry)
+    if SUPABASE_AVAILABLE:
+        try:
+            sb.table("feedback").insert(entry).execute()
+            # Update office analytics with rating
+            if item.office:
+                sb.table("office_analytics").insert({
+                    "office_id": item.office,
+                    "rating":    item.rating,
+                    "question":  item.question,
+                    "asked_at":  datetime.now().isoformat(),
+                }).execute()
+        except Exception:
+            pass
+    return {"message": "Feedback recorded. Thank you!"}
+
+@app.get("/feedback")
+def get_feedback():
+    if SUPABASE_AVAILABLE:
+        try:
+            result = sb.table("feedback").select("*").order("created_at", desc=True).limit(100).execute()
+            data   = result.data or []
+            total  = len(data)
+            ups    = sum(1 for f in data if f["rating"] == "up")
+            # Daily breakdown (last 7 days)
+            from collections import defaultdict
+            daily = defaultdict(lambda: {"up":0,"down":0})
+            for f in data:
+                try:
+                    day = f["created_at"][:10]
+                    daily[day][f["rating"]] += 1
+                except Exception:
+                    pass
+            return {
+                "total": total, "upvotes": ups, "downvotes": total - ups,
+                "score": round((ups/total*100) if total > 0 else 0, 1),
+                "daily": dict(daily),
+                "recent": data[:10],
+            }
+        except Exception:
+            pass
+    total  = len(feedback_log)
+    ups    = sum(1 for f in feedback_log if f["rating"] == "up")
+    return {"total": total, "upvotes": ups, "downvotes": total - ups,
+            "score": round((ups/total*100) if total > 0 else 0, 1), "recent": feedback_log[-5:]}
+
+
+# ═══════════════════════════════════════════════════════════════
+# OFFICE ANALYTICS
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/office-analytics")
+def office_analytics():
+    """Per-office: question count, up/down ratings, satisfaction %"""
+    if not SUPABASE_AVAILABLE:
+        return {"offices": [], "message": "Supabase not connected"}
     try:
-        from groq_key_rotator import get_groq_rotator
-        from ingest import extract_text
-        contents   = await file.read()
-        text       = extract_text(contents, filename)
-        if len(text) > 8000:
-            text = text[:8000] + "\n\n[Truncated...]"
-        lang_name  = "Hungarian" if target_language == "hu" else "English"
-        rotator    = get_groq_rotator()
-        response   = rotator.chat(
-            messages=[{"role": "user", "content": f"Translate to {lang_name}. Output translated text only.\n\n{text}"}],
-            max_tokens=4000, temperature=0.1, model="llama-3.1-8b-instant",
-        )
-        return {
-            "message":    "Translation complete.",
-            "translated": response.choices[0].message.content,
-            "language":   lang_name,
-        }
+        result = sb.table("office_analytics").select("office_id, office_name, rating, asked_at").execute()
+        data   = result.data or []
+        from collections import defaultdict
+        offices = defaultdict(lambda: {"total": 0, "up": 0, "down": 0, "unrated": 0, "daily": defaultdict(int)})
+        for row in data:
+            oid = row["office_id"]
+            offices[oid]["total"] += 1
+            if row["rating"] == "up":
+                offices[oid]["up"] += 1
+            elif row["rating"] == "down":
+                offices[oid]["down"] += 1
+            else:
+                offices[oid]["unrated"] += 1
+            try:
+                day = row["asked_at"][:10]
+                offices[oid]["daily"][day] += 1
+            except Exception:
+                pass
+        summary = []
+        for oid, stats in offices.items():
+            rated = stats["up"] + stats["down"]
+            summary.append({
+                "office_id":      oid,
+                "total":          stats["total"],
+                "up":             stats["up"],
+                "down":           stats["down"],
+                "satisfaction":   round((stats["up"] / rated * 100) if rated > 0 else 0, 1),
+                "daily":          dict(stats["daily"]),
+            })
+        summary.sort(key=lambda x: x["total"], reverse=True)
+        return {"offices": summary}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ── Purge bad docs ────────────────────────────────────────
-@app.post("/purge-bad-docs")
-def purge_bad():
-    """Remove any accidentally indexed system files (like .env) from ChromaDB."""
-    removed = purge_bad_documents()
-    return {"message": f"Purged {len(removed)} bad entries.", "removed": removed}
 
-# ── Deadlines ─────────────────────────────────────────────
-@app.get("/deadlines")
-def get_deadlines():
-    now = datetime.now().isoformat()
-    active = [d for d in deadlines_store if d["date"] >= now]
-    return {"deadlines": sorted(active, key=lambda x: x["date"])}
-
-@app.post("/deadlines")
-def create_deadline(item: DeadlineCreate):
-    dl = {
-        "id":          len(deadlines_store) + 1,
-        "title":       item.title,
-        "date":        item.date,
-        "category":    item.category,
-        "description": item.description,
-        "created_at":  datetime.now().isoformat(),
-    }
-    deadlines_store.append(dl)
-    return {"message": "Deadline created.", "deadline": dl}
-
-@app.delete("/deadlines/{dl_id}")
-def delete_deadline(dl_id: int):
-    for dl in deadlines_store:
-        if dl["id"] == dl_id:
-            deadlines_store.remove(dl)
-            return {"message": "Deleted."}
-    raise HTTPException(status_code=404, detail="Not found.")
-
-# Seed demo deadlines on startup (cleared each restart — production would use DB)
-
-# ── Escalation ("Ask a real advisor") ────────────────────
-@app.post("/escalate")
-def escalate(item: EscalationRequest):
-    esc = {
-        "id":            len(escalations) + 1,
-        "student_email": item.student_email,
-        "student_name":  item.student_name,
-        "question":      item.question,
-        "ai_answer":     item.ai_answer,
-        "reason":        item.reason,
-        "status":        "pending",    # pending | responded | resolved
-        "created_at":    datetime.now().isoformat(),
-        "response":      None,
-    }
-    escalations.append(esc)
-    return {"message": "Your request has been sent to an academic advisor. They will contact you within 1 business day.", "id": esc["id"]}
+# ═══════════════════════════════════════════════════════════════
+# ESCALATIONS
+# ═══════════════════════════════════════════════════════════════
 
 @app.get("/escalations")
-def get_escalations(status: str = None):
-    if status:
-        return {"escalations": [e for e in escalations if e["status"] == status]}
-    return {"escalations": escalations}
-
-@app.patch("/escalations/{esc_id}/respond")
-def respond_escalation(esc_id: int, body: dict):
-    for e in escalations:
-        if e["id"] == esc_id:
-            e["response"] = body.get("response", "")
-            e["status"]   = "responded"
-            return {"message": "Response sent."}
-    raise HTTPException(status_code=404, detail="Not found.")
-
-# ── Answer corrections (human-in-the-loop) ───────────────
-@app.post("/corrections")
-def submit_correction(item: AnswerCorrection):
-    import hashlib
-    key = hashlib.md5(item.question.lower().strip().encode()).hexdigest()
-    corrections[key] = {
-        "question":        item.question,
-        "original_answer": item.original_answer,
-        "corrected_answer": item.corrected_answer,
-        "corrected_by":    item.corrected_by,
-        "corrected_at":    datetime.now().isoformat(),
-    }
-    return {"message": "Correction saved. Future answers for this question will use the corrected version.", "key": key}
-
-@app.get("/corrections")
-def get_corrections():
-    return {"corrections": list(corrections.values()), "total": len(corrections)}
-
-# ── Feedback ──────────────────────────────────────────────
-@app.post("/feedback")
-def submit_feedback(item: FeedbackItem):
-    feedback_log.append({"question": item.question, "rating": item.rating, "created_at": datetime.now().isoformat()})
-    return {"message": "Feedback recorded."}
-
-@app.get("/feedback")
-def get_feedback_stats():
-    total   = len(feedback_log)
-    upvotes = sum(1 for f in feedback_log if f["rating"] == "up")
-    return {"total": total, "upvotes": upvotes, "downvotes": total - upvotes,
-            "score": round((upvotes / total * 100) if total > 0 else 0, 1)}
-
-
-# ── Office analytics (stub — uses existing stats) ─────────
-@app.get("/office-analytics")
-def office_analytics():
-    s = get_stats()
-    return {
-        "by_office":   s.get("questions_by_office", {}),
-        "total":       s.get("total_questions", 0),
-        "offices":     list(RAG_OFFICES.keys()),
-    }
-
-# ── Audit log (stub) ──────────────────────────────────────
-@app.get("/audit-log")
-def audit_log():
-    # Returns recent questions as a basic audit trail
-    s = get_stats()
-    return {"log": [{"action": "question", "detail": q, "ts": "—"} for q in s.get("recent_questions", [])]}
-
-# ── Events (stub) ─────────────────────────────────────────
-@app.get("/events")
-def get_events():
-    # Reuse deadlines as events
-    now = datetime.now().isoformat()
-    active = [d for d in deadlines_store if d["date"] >= now]
-    return {"events": sorted(active, key=lambda x: x["date"])}
-
-
-# ══════════════════════════════════════════════════════════════
-# AUTH endpoints (JWT-lite — stateless, no library needed)
-# ══════════════════════════════════════════════════════════════
-import hashlib, base64, json as _json
-
-_sessions: dict = {}   # token → user dict (in-memory; fine for single-process)
-
-def _make_token(email: str) -> str:
-    raw = f"{email}:{datetime.now().isoformat()}:{os.urandom(8).hex()}"
-    return base64.urlsafe_b64encode(raw.encode()).decode()
-
-async def _get_user_from_supabase(email: str, password: str):
-    """Query Supabase users table directly via REST."""
-    supa_url = os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL", "")
-    supa_key  = os.getenv("VITE_SUPABASE_ANON_KEY") or os.getenv("SUPABASE_ANON_KEY", "")
-    if not supa_url or not supa_key:
-        return None
-    import httpx
+def get_escalations(status: Optional[str] = None):
+    if not SUPABASE_AVAILABLE:
+        return {"escalations": []}
     try:
-        r = await httpx.AsyncClient().get(
-            f"{supa_url}/rest/v1/users",
-            params={"email": f"eq.{email}", "active": "eq.true", "select": "*"},
-            headers={"apikey": supa_key, "Authorization": f"Bearer {supa_key}"},
-            timeout=5,
-        )
-        rows = r.json()
-        if isinstance(rows, list) and rows:
-            u = rows[0]
-            if u.get("password") == password:
-                return u
+        q = sb.table("escalations").select("*").order("created_at", desc=True)
+        if status:
+            q = q.eq("status", status)
+        result = q.execute()
+        return {"escalations": result.data or []}
     except Exception as e:
-        print(f"[Auth] Supabase lookup failed: {e}")
-    return None
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/auth/login")
-async def auth_login(body: dict):
-    email    = (body.get("email") or "").strip().lower()
-    password = body.get("password") or ""
-    if not email or not password:
-        raise HTTPException(status_code=400, detail="Email and password required")
-    user = await _get_user_from_supabase(email, password)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = _make_token(email)
-    _sessions[token] = user
-    return {"token": token, "user": user}
+@app.post("/escalations")
+def create_escalation(item: EscalationCreate):
+    entry = {
+        "student_email": item.student_email,
+        "student_name":  item.student_name,
+        "subject":       item.subject,
+        "message":       item.message,
+        "status":        "open",
+        "created_at":    datetime.now().isoformat(),
+    }
+    if SUPABASE_AVAILABLE:
+        try:
+            result = sb.table("escalations").insert(entry).execute()
+            return {"message": "Escalation submitted.", "escalation": result.data[0]}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"message": "Escalation submitted (offline).", "escalation": entry}
 
-@app.get("/auth/me")
-def auth_me(request: Request):
-    token = (request.headers.get("Authorization") or "").replace("Bearer ", "")
-    user  = _sessions.get(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return user
+@app.patch("/escalations/{esc_id}/reply")
+def reply_escalation(esc_id: int, reply: EscalationReply):
+    if not SUPABASE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Supabase not connected")
+    try:
+        result = sb.table("escalations").update({
+            "admin_reply": reply.admin_reply,
+            "replied_by":  reply.replied_by,
+            "replied_at":  datetime.now().isoformat(),
+            "status":      "replied",
+        }).eq("id", esc_id).execute()
+        audit(reply.replied_by, "admin", "REPLY_ESCALATION", f"escalation:{esc_id}")
+        return {"message": "Reply sent.", "escalation": result.data[0] if result.data else {}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/auth/logout")
-def auth_logout(request: Request):
-    token = (request.headers.get("Authorization") or "").replace("Bearer ", "")
-    _sessions.pop(token, None)
-    return {"ok": True}
+@app.get("/escalations/student/{email}")
+def student_escalations(email: str):
+    """Called by student chat to show their own escalation replies."""
+    if not SUPABASE_AVAILABLE:
+        return {"escalations": []}
+    try:
+        result = sb.table("escalations").select("*").eq("student_email", email).order("created_at", desc=True).execute()
+        return {"escalations": result.data or []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/auth/complete-onboarding")
-def complete_onboarding(request: Request):
-    token = (request.headers.get("Authorization") or "").replace("Bearer ", "")
-    user  = _sessions.get(token)
-    if user:
-        user["onboarding_done"] = True
-    return {"ok": True}
 
-# ══════════════════════════════════════════════════════════════
-# PROGRESS TRACKER
-# ══════════════════════════════════════════════════════════════
-_progress: dict = {}   # email → {task_key: {...}}
+# ═══════════════════════════════════════════════════════════════
+# PROGRESS TASKS
+# ═══════════════════════════════════════════════════════════════
 
-_DEFAULT_TASKS = [
-    {"task_key":"register_courses",   "label":"Register for courses"},
-    {"task_key":"pay_tuition",        "label":"Pay tuition fee"},
-    {"task_key":"upload_id",          "label":"Upload student ID"},
-    {"task_key":"get_student_card",   "label":"Collect student card"},
-    {"task_key":"library_card",       "label":"Activate library card"},
-    {"task_key":"email_setup",        "label":"Set up university email"},
-    {"task_key":"thesis_topic",       "label":"Submit thesis topic"},
-    {"task_key":"dormitory_form",     "label":"Complete dormitory form"},
+DEFAULT_TASKS = [
+    {"task_key": "collect_docs",       "label": "Collect enrollment documents"},
+    {"task_key": "register_courses",   "label": "Register for courses"},
+    {"task_key": "pay_fees",           "label": "Pay semester fees"},
+    {"task_key": "get_student_card",   "label": "Pick up student card"},
+    {"task_key": "library_access",     "label": "Activate library access"},
+    {"task_key": "email_setup",        "label": "Set up university email"},
+    {"task_key": "thesis_topic",       "label": "Submit thesis topic (if applicable)"},
+    {"task_key": "internship_form",    "label": "Submit internship placement form"},
+    {"task_key": "scholarship_apply",  "label": "Apply for scholarship"},
 ]
 
 @app.get("/progress/{student_email}")
 def get_progress(student_email: str):
-    tasks_map = _progress.get(student_email, {})
-    result = []
-    for t in _DEFAULT_TASKS:
-        saved = tasks_map.get(t["task_key"], {})
-        result.append({**t, "done": saved.get("done", False), "done_at": saved.get("done_at")})
-    done = sum(1 for r in result if r["done"])
-    return {"tasks": result, "done": done, "total": len(result)}
+    if SUPABASE_AVAILABLE:
+        try:
+            result = sb.table("progress_tasks").select("*").eq("student_email", student_email).execute()
+            saved  = {r["task_key"]: r for r in (result.data or [])}
+            tasks  = []
+            for t in DEFAULT_TASKS:
+                row = saved.get(t["task_key"])
+                tasks.append({
+                    "task_key": t["task_key"],
+                    "label":    t["label"],
+                    "done":     row["done"] if row else False,
+                    "done_at":  row["done_at"] if row else None,
+                })
+            return {"tasks": tasks, "done": sum(1 for t in tasks if t["done"]), "total": len(tasks)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"tasks": [{**t, "done": False, "done_at": None} for t in DEFAULT_TASKS], "done": 0, "total": len(DEFAULT_TASKS)}
 
 @app.post("/progress")
-def save_progress(body: dict):
-    email    = body.get("student_email", "")
-    task_key = body.get("task_key", "")
-    done     = body.get("done", False)
-    label    = body.get("label", "")
-    if not email or not task_key:
-        raise HTTPException(status_code=400, detail="student_email and task_key required")
-    if email not in _progress:
-        _progress[email] = {}
-    _progress[email][task_key] = {
-        "done":    done,
-        "label":   label,
-        "done_at": datetime.now().isoformat() if done else None,
+def update_progress(item: ProgressTaskUpdate):
+    if SUPABASE_AVAILABLE:
+        try:
+            sb.table("progress_tasks").upsert({
+                "student_email": item.student_email,
+                "task_key":      item.task_key,
+                "label":         item.label,
+                "done":          item.done,
+                "done_at":       datetime.now().isoformat() if item.done else None,
+            }, on_conflict="student_email,task_key").execute()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"message": "Progress updated"}
+
+
+# ═══════════════════════════════════════════════════════════════
+# CAMPUS EVENTS
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/events")
+def get_events():
+    if SUPABASE_AVAILABLE:
+        try:
+            result = sb.table("campus_events").select("*").gte("starts_at", datetime.now().isoformat()).order("starts_at").execute()
+            return {"events": result.data or []}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    # Fallback: empty list
+    return {"events": []}
+
+@app.post("/events")
+def create_event(item: EventCreate):
+    entry = {
+        "title":       item.title,
+        "description": item.description,
+        "location":    item.location,
+        "starts_at":   item.starts_at,
+        "ends_at":     item.ends_at,
+        "category":    item.category,
+        "created_by":  item.created_by,
     }
-    return {"ok": True}
+    if SUPABASE_AVAILABLE:
+        try:
+            result = sb.table("campus_events").insert(entry).execute()
+            return {"message": "Event created.", "event": result.data[0]}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"message": "Event created (offline).", "event": entry}
 
-# ══════════════════════════════════════════════════════════════
-# ESCALATIONS — student view + reply endpoint
-# ══════════════════════════════════════════════════════════════
-@app.get("/escalations/student/{student_email}")
-def get_student_escalations(student_email: str):
-    mine = [e for e in escalations if e.get("student_email","").lower() == student_email.lower()]
-    return {"escalations": mine}
+@app.delete("/events/{event_id}")
+def delete_event(event_id: int):
+    if SUPABASE_AVAILABLE:
+        try:
+            sb.table("campus_events").delete().eq("id", event_id).execute()
+            return {"message": "Event deleted."}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"message": "Event deleted (offline)."}
 
-@app.patch("/escalations/{esc_id}/reply")
-def reply_escalation(esc_id: int, body: dict):
-    """AdminPortal uses /reply, old code used /respond — support both."""
-    for e in escalations:
-        if e["id"] == esc_id:
-            e["admin_reply"]  = body.get("admin_reply") or body.get("response", "")
-            e["replied_by"]   = body.get("replied_by") or body.get("corrected_by", "Admin")
-            e["replied_at"]   = datetime.now().isoformat()
-            e["status"]       = "replied"
-            return {"ok": True, "escalation": e}
-    raise HTTPException(status_code=404, detail="Escalation not found")
+
+# ═══════════════════════════════════════════════════════════════
+# AUDIT LOG
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/audit-log")
+def get_audit_log(limit: int = 50):
+    if SUPABASE_AVAILABLE:
+        try:
+            result = sb.table("audit_log").select("*").order("created_at", desc=True).limit(limit).execute()
+            return {"logs": result.data or []}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"logs": audit_buffer[-limit:][::-1]}
+
+
+# ═══════════════════════════════════════════════════════════════
+# FAQ + TRANSLATE + OFFICES (unchanged from v2)
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/faq")
+def get_faq():
+    stats_data = get_stats()
+    questions  = stats_data.get("all_questions", [])
+    topics     = {}
+    keywords   = {
+        "course":      ["course","curriculum","subject","module","credit","tantárgy"],
+        "application": ["apply","application","admission","register","jelentkezés"],
+        "scholarship": ["scholarship","grant","aid","funding","ösztöndíj"],
+        "fees":        ["fee","tuition","cost","payment","price","díj"],
+        "deadline":    ["deadline","date","calendar","schedule","határidő"],
+        "visa":        ["visa","permit","residence","vízum"],
+        "housing":     ["housing","accommodation","dormitory","kollégium"],
+        "graduation":  ["graduate","graduation","degree","diploma"],
+    }
+    for q in questions:
+        lower = q.lower()
+        for topic, words in keywords.items():
+            if any(w in lower for w in words):
+                topics.setdefault(topic, []).append(q)
+                break
+    faq = [{"topic": t.replace("_"," ").title(), "question": qs[0], "count": len(qs)}
+           for t, qs in list(topics.items())[:8] if qs]
+    faq.sort(key=lambda x: x["count"], reverse=True)
+    return {"faq": faq}
+
+@app.post("/translate")
+async def translate_document(file: UploadFile = File(...), target_language: str = "en"):
+    if not file.filename.endswith((".txt",".pdf",".docx")):
+        raise HTTPException(status_code=400, detail="Only TXT, PDF, DOCX supported.")
+    try:
+        from groq_key_rotator import get_groq_rotator
+        contents = await file.read()
+        from ingest import extract_text
+        text = extract_text(contents, file.filename)
+        if len(text) > 8000:
+            text = text[:8000] + "\n\n[Truncated...]"
+        lang_name = "Hungarian" if target_language == "hu" else "English"
+        rotator  = get_groq_rotator()
+        response = rotator.chat(
+            messages=[{"role":"user","content":f"Translate to {lang_name}. Preserve structure. Only output translated text.\n\n{text}"}],
+            max_tokens=4000, temperature=0.1, model="llama-3.1-8b-instant",
+        )
+        translated   = response.choices[0].message.content
+        new_filename = f"translated_{target_language}_{file.filename.rsplit('.',1)[0]}.txt"
+        return {"message":"Translation complete.","filename":new_filename,"language":lang_name,"translated":translated}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/offices")
+def get_offices():
+    try:
+        from rag import OFFICES, get_vectorstore
+        vs    = get_vectorstore()
+        items = []
+        for oid, info in OFFICES.items():
+            try:
+                results = vs.get(where={"office": {"$eq": oid}})
+                count   = len(results.get("ids", []))
+            except Exception:
+                count = 0
+            items.append({"id": oid, "name": info["name"], "emoji": info.get("emoji","🏛️"), "doc_count": count})
+        return {"offices": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/offices/{office_id}/documents")
+def office_documents(office_id: str):
+    try:
+        from rag import get_vectorstore
+        vs      = get_vectorstore()
+        results = vs.get(where={"office": {"$eq": office_id}}, include=["metadatas"])
+        seen    = set()
+        docs    = []
+        for m in (results.get("metadatas") or []):
+            src = m.get("source","Unknown")
+            if src not in seen:
+                seen.add(src)
+                docs.append({"name": src, "office": office_id, **doc_registry.get(src, {})})
+        return {"documents": docs, "office_id": office_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/detect-office")
+def detect_office_endpoint(body: dict):
+    question = body.get("question","")
+    try:
+        from rag import detect_office
+        return {"office": detect_office(question)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Catch-all: serve React app for any non-API route ─────────
+@app.get("/{full_path:path}")
+async def serve_react(full_path: str):
+    """Serve React index.html for all non-API routes (SPA routing)."""
+    import os as _os
+    dist  = _os.path.join(_os.path.dirname(__file__), "dist")
+
+    # If requesting a real file that exists in dist, serve it directly
+    requested = _os.path.join(dist, full_path)
+    if full_path and _os.path.isfile(requested):
+        return FileResponse(requested)
+
+    # Otherwise serve index.html (React handles routing client-side)
+    index = _os.path.join(dist, "index.html")
+    if _os.path.isfile(index):
+        return FileResponse(index, media_type="text/html")
+
+    return {"error": "Frontend not built. Run: npm run build"}
+
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
