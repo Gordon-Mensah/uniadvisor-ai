@@ -428,6 +428,11 @@ function Bubble({ msg, C, isNew, onFeedback, uiLang }) {
 // ═══════════════════════════════════════════════════════════
 // LOGIN SCREEN (JWT-based)
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// REPLACE the LoginScreen function in App.jsx with this one
+// Change: selecting a role no longer auto-fills email/password
+// ═══════════════════════════════════════════════════════════
+
 function LoginScreen({ onLogin }) {
   const [role,setRole]         = useState(null);
   const [email,setEmail]       = useState("");
@@ -444,28 +449,27 @@ function LoginScreen({ onLogin }) {
     admin:  ["admin@uniduna.hu","password123"],
   };
 
+  // ── Selecting a role just sets the role, does NOT fill fields ──
   const selectRole = (r) => {
-    setRole(r); setError("");
-    const [e,p] = DEMO[r];
-    setEmail(e); setPassword(p);
+    setRole(r);
+    setError("");
+    setEmail("");
+    setPassword("");
   };
 
   const handleLogin = async () => {
     if(!email.trim()||!password.trim()) { setError("Please enter email and password."); return; }
     setLoading(true); setError("");
     try {
-      // Try JWT endpoint first
       const res  = await fetch(`${API}/auth/login`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email.trim(),password:password.trim()})});
       const data = await res.json();
       if(!res.ok) throw new Error(data.detail||"Login failed");
       TokenStore.set(data.token);
       onLogin(data.user, data.token);
     } catch(e) {
-      // Fallback: direct Supabase query (plaintext passwords for older DB)
       try {
         const { data, error:err } = await supabase.from("users").select("*").eq("email",email.trim()).eq("active",true).single();
         if(err||!data) throw new Error("Invalid credentials");
-        // Accept either plaintext match OR role match (demo mode)
         if(data.password===password||data.role===role) {
           onLogin(data, null);
         } else {
@@ -483,18 +487,21 @@ function LoginScreen({ onLogin }) {
       {[["#0D9488","15%","10%",300],["#8B5CF6","80%","20%",200],["#0EA5E9","60%","70%",250]].map(([c,l,tp,s],i)=>(
         <div key={i} style={{ position:"absolute",left:l,top:tp,width:s,height:s,borderRadius:"50%",background:c,opacity:0.06,filter:"blur(60px)",pointerEvents:"none" }} />
       ))}
+
       {/* Lang toggle */}
       <div style={{ position:"absolute",top:20,right:24,display:"flex",gap:4 }}>
         {[["en","EN"],["hu","HU"]].map(([code,label])=>(
           <button key={code} onClick={()=>setUiLang(code)} style={{ padding:"5px 12px",borderRadius:8,border:`1px solid ${uiLang===code?"#0D9488":"rgba(255,255,255,0.15)"}`,background:uiLang===code?"rgba(13,148,136,0.2)":"transparent",color:uiLang===code?"#5EEAD4":"#64748B",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>{label}</button>
         ))}
       </div>
+
       <div style={{ width:"100%",maxWidth:480,padding:"24px 16px",position:"relative",zIndex:1 }}>
         <div style={{ textAlign:"center",marginBottom:32 }}>
           <div style={{ fontSize:44,marginBottom:10 }}>🎓</div>
           <h1 style={{ fontSize:26,fontWeight:800,color:"#F1F5F9",margin:"0 0 6px",letterSpacing:"-0.5px" }}>UniAdvisor AI</h1>
           <p style={{ fontSize:14,color:"#64748B",margin:0 }}>{t.university}</p>
         </div>
+
         {!role ? (
           <div>
             <p style={{ fontSize:13,color:"#94A3B8",textAlign:"center",marginBottom:16 }}>
@@ -515,21 +522,24 @@ function LoginScreen({ onLogin }) {
           </div>
         ) : (
           <div style={{ background:"rgba(255,255,255,0.05)",borderRadius:20,border:"1px solid rgba(255,255,255,0.1)",padding:"28px 28px 24px" }}>
-            <button onClick={()=>{setRole(null);setError("");}} style={{ background:"transparent",border:"none",color:"#64748B",cursor:"pointer",fontSize:13,marginBottom:16,display:"flex",alignItems:"center",gap:5,padding:0,fontFamily:"inherit" }}>{t.loginBack}</button>
-            <div style={{ fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4 }}>
+            <button onClick={()=>{setRole(null);setError("");setEmail("");setPassword("");}} style={{ background:"transparent",border:"none",color:"#64748B",cursor:"pointer",fontSize:13,marginBottom:16,display:"flex",alignItems:"center",gap:5,padding:0,fontFamily:"inherit" }}>{t.loginBack}</button>
+            <div style={{ fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:20 }}>
               {t.loginRoles.find(r=>r.id===role)?.icon} {uiLang==="hu"?"Bejelentkezés mint":"Sign in as"} {t.loginRoles.find(r=>r.id===role)?.label}
             </div>
-            <div style={{ fontSize:11,color:"#475569",marginBottom:20,background:"rgba(255,255,255,0.05)",padding:"6px 10px",borderRadius:8 }}>
-              Demo: {DEMO[role][0]} / {DEMO[role][1]}
-            </div>
-            {[["Email","email","email",email,setEmail],[uiLang==="hu"?"Jelszó":"Password","password","password",password,setPassword]].map(([label,type,ph,val,setter])=>(
+
+            {[
+              ["Email","email","email",email,setEmail],
+              [uiLang==="hu"?"Jelszó":"Password","password","password",password,setPassword]
+            ].map(([label,type,ph,val,setter])=>(
               <div key={label} style={{ marginBottom:14 }}>
                 <div style={{ fontSize:11,color:"#94A3B8",fontWeight:600,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.5px" }}>{label}</div>
                 <input type={type} value={val} onChange={e=>setter(e.target.value)} placeholder={ph} onKeyDown={e=>e.key==="Enter"&&handleLogin()}
                   style={{ width:"100%",padding:"11px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.07)",color:"#F1F5F9",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit" }} />
               </div>
             ))}
+
             {error && <div style={{ color:"#F87171",fontSize:12,marginBottom:12,textAlign:"center" }}>{error}</div>}
+
             <button onClick={handleLogin} disabled={loading} style={{ width:"100%",padding:"13px 0",borderRadius:12,border:"none",background:t.loginRoles.find(r=>r.id===role)?.color||"#0D9488",color:"#fff",fontSize:14,fontWeight:700,cursor:loading?"not-allowed":"pointer",opacity:loading?0.7:1,fontFamily:"inherit",transition:"all 0.15s" }}>
               {loading?(uiLang==="hu"?"Bejelentkezés…":"Signing in…"):(uiLang==="hu"?"Bejelentkezés":"Sign In")}
             </button>

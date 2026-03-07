@@ -13,8 +13,6 @@ from groq_key_rotator import get_groq_rotator
 CHROMA_DIR  = os.getenv("CHROMA_DIR", "./chroma_db")
 EMBED_MODEL = "all-MiniLM-L6-v2"
 
-# Cache the model in /opt/render/project/src/.cache so it
-# doesn't re-download on every deploy
 os.environ.setdefault(
     "SENTENCE_TRANSFORMERS_HOME",
     os.getenv("SENTENCE_TRANSFORMERS_HOME", "./.model_cache")
@@ -22,11 +20,11 @@ os.environ.setdefault(
 
 # ── State ─────────────────────────────────────────────────
 _answer_cache = {}
-CACHE_MAX     = 100
+CACHE_MAX     = 200
 stats_log     = []
 all_questions = []
 
-# ── Office definitions (mirror of ingest.py) ──────────────
+# ── Office definitions ────────────────────────────────────
 OFFICES = {
     "study_office":  { "name": "Study Office",                  "emoji": "📚", "keywords": ["course","subject","curriculum","grade","exam","credit","registration","enrolment","transcript","timetable","schedule","beiratkozás","kurzus","tanulmány"] },
     "iro":           { "name": "International Relations Office", "emoji": "🌍", "keywords": ["international","erasmus","exchange","visa","residence","foreign","scholarship abroad","iro","international student","külföldi","ösztöndíj","csere"] },
@@ -40,6 +38,32 @@ OFFICES = {
     "general":       { "name": "General / University-wide",      "emoji": "🏛️", "keywords": [] },
 }
 
+# ── Hungarian detection ───────────────────────────────────
+_HU_CHARS = set("áéíóöőüűÁÉÍÓÖŐÜŰ")
+_HU_WORDS  = {
+    "az","egy","és","hogy","nem","van","mi","de","ezt","azt",
+    "kérem","köszönöm","mikor","hogyan","hol","melyik","mik",
+    "milyen","mennyi","határidő","kurzus","beiratkozás","tandíj",
+    "ösztöndíj","vizsgá","vizsga","tantárgy","félév","felvétel",
+    "könyvtár","díj","fizetés","jelszó","számítógép","kollégium",
+    "igen","nem","szia","hello","üdvözlet","segítség","szeretném",
+    "lehet","kell","tudok","tudna","lenne","lesz","volt","nincs",
+}
+
+def detect_language(text: str) -> str:
+    """
+    Returns 'hu' if the text is Hungarian, 'en' otherwise.
+    Checks for Hungarian-specific characters and common Hungarian words.
+    """
+    # Presence of Hungarian-specific accented chars is a strong signal
+    if any(c in _HU_CHARS for c in text):
+        return "hu"
+    # Check for Hungarian words (word-boundary match)
+    words = set(text.lower().split())
+    if words & _HU_WORDS:
+        return "hu"
+    return "en"
+
 
 def detect_office(question: str) -> str:
     """Auto-detect the most relevant office from a question using keywords."""
@@ -51,9 +75,7 @@ def detect_office(question: str) -> str:
         score = sum(1 for kw in info["keywords"] if kw in lower)
         if score > 0:
             scores[office_id] = score
-    if not scores:
-        return "general"
-    return max(scores, key=scores.get)
+    return max(scores, key=scores.get) if scores else "general"
 
 
 def _cache_key(question: str, major: str, year: str, office: str, nationality: str) -> str:
@@ -91,9 +113,7 @@ def get_answer(
 ) -> tuple:
     """
     Returns: (answer, sources, detected_office)
-
-    office: "auto" = keyword-detect, otherwise use the provided office ID.
-    student_nationality: used to tailor scholarship/visa advice for international students.
+    Target latency: <3 seconds using llama-3.1-8b-instant
     """
     if history is None:
         history = []
@@ -103,16 +123,26 @@ def get_answer(
 
     all_questions.append(question)
 
+    # ── Language detection — done ONCE, used everywhere ──
+    # Check current question first; if unclear, check last user message
+    lang = detect_language(question)
+    if lang == "en" and history:
+        last_user = next(
+            (m["content"] for m in reversed(history) if m.get("role") == "user"),
+            None
+        )
+        if last_user:
+            lang = detect_language(last_user)
+
     # ── Office detection ──────────────────────────────────
-    # If student is non-Hungarian and asking about scholarships/visa,
-    # bias toward IRO even if "auto"
-    if (not office or office == "auto"):
+    if not office or office == "auto":
         office = detect_office(question)
+        # International students asking about money/visa → IRO
         if student_nationality.lower() not in ("hungarian", "magyar"):
-            international_triggers = ["scholarship","visa","residence","permit","erasmus","exchange","tuition","fee","support"]
-            if any(t in question.lower() for t in international_triggers):
+            if any(t in question.lower() for t in ["scholarship","visa","residence","permit","erasmus","exchange","tuition","fee"]):
                 office = "iro"
 
+    # ── Cache check (skip cache when history present) ─────
     cache_key = _cache_key(question, student_major, student_year, office, student_nationality)
     if cache_key in _answer_cache and not history:
         print("[UniAdvisor] Cache hit!")
@@ -122,42 +152,52 @@ def get_answer(
     doc_count   = vectorstore._collection.count()
     office_info = OFFICES.get(office, OFFICES["general"])
 
-    # ── Build nationality context note ────────────────────
-    is_international = student_nationality.lower() not in ("hungarian", "magyar")
-    nationality_note = (
-        f"NOTE: {student_name} is an INTERNATIONAL student (nationality: {student_nationality}). "
-        f"Provide relevant information about international student requirements, visa rules, "
-        f"and Erasmus/scholarship options where applicable. "
-    ) if is_international else ""
+    # ── Language instruction (strict, concise) ────────────
+    if lang == "hu":
+        lang_instruction = "Válaszolj CSAK magyarul. Ne használj angolt."
+    else:
+        lang_instruction = "Reply in ENGLISH only. Do not use Hungarian."
 
     # ── No documents fallback ─────────────────────────────
     if doc_count == 0:
-        prompt = (
-            f"UniAdvisor AI, Dunaujvaros Egyetem. Student: {student_name}, {student_major}. "
-            f"{nationality_note}"
-            f"No documents uploaded yet — use general knowledge. Match the question's language.\n"
+        is_intl = student_nationality.lower() not in ("hungarian", "magyar")
+        prompt  = (
+            f"You are UniAdvisor AI at Dunaujvaros Egyetem. "
+            f"Student: {student_name}, {student_major}. "
+            f"{'International student. ' if is_intl else ''}"
+            f"{lang_instruction} "
+            f"No documents uploaded yet — use general knowledge. Be concise.\n"
             f"Q: {question}\nA:"
         )
         response = rotator.chat(
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=400, temperature=0.3, model="llama-3.1-8b-instant",
+            max_tokens=200,
+            temperature=0.2,
+            model="llama-3.1-8b-instant",   # fastest model
         )
         return response.choices[0].message.content, [], office
 
-    # ── Vector search: office-filtered, fall back to global ─
+    # ── Vector search: k=2 for speed ─────────────────────
     where_filter = {"office": {"$eq": office}} if office != "general" else None
     try:
         if where_filter:
-            docs = vectorstore.similarity_search(question, k=3, filter=where_filter)
+            docs = vectorstore.similarity_search(question, k=2, filter=where_filter)
             if not docs:
-                print(f"[UniAdvisor] No docs for office '{office}', falling back to global search")
-                docs = vectorstore.similarity_search(question, k=3)
+                docs = vectorstore.similarity_search(question, k=2)
         else:
-            docs = vectorstore.similarity_search(question, k=3)
+            docs = vectorstore.similarity_search(question, k=2)
     except Exception:
-        docs = vectorstore.similarity_search(question, k=3)
+        docs = vectorstore.similarity_search(question, k=2)
 
-    context = "\n\n".join([d.page_content for d in docs])
+    # ── Truncate context to keep prompt short ─────────────
+    # ~600 chars per chunk × 2 chunks = ~1200 chars context
+    context_parts = []
+    for d in docs:
+        text = d.page_content.strip()
+        if len(text) > 600:
+            text = text[:600] + "…"
+        context_parts.append(text)
+    context = "\n\n".join(context_parts)
 
     # ── Build citations ───────────────────────────────────
     seen, sources = set(), []
@@ -169,72 +209,57 @@ def get_answer(
         if key not in seen:
             seen.add(key)
             entry = {
-                "file":        src,
-                "office":      off,
-                "office_name": OFFICES.get(off, {}).get("name", off),
-                "office_emoji":OFFICES.get(off, {}).get("emoji", "🏛️"),
+                "file":         src,
+                "office":       off,
+                "office_name":  OFFICES.get(off, {}).get("name", off),
+                "office_emoji": OFFICES.get(off, {}).get("emoji", "🏛️"),
             }
             if page is not None:
                 entry["page"] = page + 1
             sources.append(entry)
 
-    # ── Detect question language explicitly ──────────────
-    hu_chars = set("áéíóöőüűÁÉÍÓÖŐÜŰ")
-    hu_words  = {"az","egy","és","hogy","nem","van","mi","de","ezt","azt","kérem",
-                 "köszönöm","mikor","hogyan","hol","melyik","mik","milyen","mennyi",
-                 "mikor","határidő","kurzus","beiratkozás","tandíj","ösztöndíj"}
-    q_lower   = question.lower()
-    has_hu_chars = any(c in hu_chars for c in question)
-    has_hu_words = any(w in q_lower.split() for w in hu_words)
-    reply_lang   = "Hungarian" if (has_hu_chars or has_hu_words) else "English"
-    reply_lang_instruction = (
-        f"IMPORTANT: The student wrote in {reply_lang}. "
-        f"You MUST reply in {reply_lang} only. Do not switch languages."
-    )
-
-    # ── Build messages array with real chat history ──────
+    # ── System prompt — kept SHORT for speed ─────────────
+    is_intl = student_nationality.lower() not in ("hungarian", "magyar")
     system_msg = (
         f"UniAdvisor AI — {office_info['emoji']} {office_info['name']}, Dunaujvaros Egyetem.\n"
-        f"Student: {student_name}, {student_year}, {student_major} ({student_nationality}).\n"
-        f"{nationality_note}"
-        f"{reply_lang_instruction}\n"
-        f"Answer from context only. If not in context, say so and direct to {office_info['name']}.\n"
-        f"Be concise and use bullet points for lists.\n"
+        f"Student: {student_name}, {student_year}, {student_major}"
+        f"{', international (' + student_nationality + ')' if is_intl else ''}.\n"
+        f"{lang_instruction}\n"
+        f"Answer ONLY from the context below. Be concise — use bullet points for lists. "
+        f"If not in context, say so and direct to {office_info['name']}.\n\n"
         f"Context:\n{context}"
     )
 
-    # Build proper chat turns from history (last 10 messages = 5 exchanges)
-    # This lets the model remember previous Q&A in the same session
+    # ── Build messages — last 4 history messages only ─────
     messages = [{"role": "system", "content": system_msg}]
-    for msg in (history or [])[-6:]:
+    for msg in (history or [])[-4:]:
         role = msg.get("role", "user")
-        # Normalise role: only "user" and "assistant" are valid for Groq
         if role not in ("user", "assistant"):
             role = "user"
         messages.append({"role": role, "content": msg.get("content", "")})
-    # Always append the current question as the final user turn
     messages.append({"role": "user", "content": question})
 
+    # ── LLM call — llama-3.1-8b-instant is the fastest ───
     response = rotator.chat(
         messages=messages,
-        max_tokens=380,
+        max_tokens=220,          # was 380 — shorter = faster
         temperature=0.1,
         model="llama-3.1-8b-instant",
     )
     answer = response.choices[0].message.content
 
-    # ── Cache result ──────────────────────────────────────
+    # ── Cache ─────────────────────────────────────────────
     if len(_answer_cache) >= CACHE_MAX:
         del _answer_cache[next(iter(_answer_cache))]
     _answer_cache[cache_key] = {"answer": answer, "sources": sources, "office": office}
 
     stats_log.append({
-        "timestamp":     datetime.now().isoformat(),
-        "question":      question,
-        "student_major": student_major,
-        "student_year":  student_year,
+        "timestamp":           datetime.now().isoformat(),
+        "question":            question,
+        "student_major":       student_major,
+        "student_year":        student_year,
         "student_nationality": student_nationality,
-        "office":        office,
+        "office":              office,
     })
 
     return answer, sources, office
@@ -260,13 +285,13 @@ def get_stats() -> dict:
         indexed = 0
 
     return {
-        "total_questions":       total,
-        "questions_by_major":    majors,
-        "questions_by_year":     years,
-        "questions_by_office":   offices_count,
+        "total_questions":          total,
+        "questions_by_major":       majors,
+        "questions_by_year":        years,
+        "questions_by_office":      offices_count,
         "questions_by_nationality": nationalities,
-        "indexed_chunks":        indexed,
-        "cached_answers":        len(_answer_cache),
-        "recent_questions":      [e["question"] for e in stats_log[-5:]],
-        "all_questions":         all_questions,
+        "indexed_chunks":           indexed,
+        "cached_answers":           len(_answer_cache),
+        "recent_questions":         [e["question"] for e in stats_log[-5:]],
+        "all_questions":            all_questions,
     }
