@@ -368,30 +368,33 @@ async def chat(req: ChatRequest):
         print(f"[UniAdvisor] /chat error:\n{tb}")
         raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
-    # Log to Supabase (non-fatal)
+    # Log to Supabase in background (non-blocking — doesn't delay response)
     if SUPABASE_AVAILABLE:
-        try:
-            sb.table("chat_logs").insert({
-                "question":     req.message,
-                "answer":       answer[:500],
-                "student_name": req.student_name,
-                "major":        req.student_major,
-                "year_of_study":req.student_year,
-                "nationality":  req.student_nationality,
-                "office_routed":detected_office,
-                "session_id":   req.session_id,
-                "asked_at":     datetime.now().isoformat(),
-            }).execute()
-        except Exception:
-            pass
-        try:
-            sb.table("office_analytics").insert({
-                "office_id": detected_office,
-                "question":  req.message,
-                "asked_at":  datetime.now().isoformat(),
-            }).execute()
-        except Exception:
-            pass
+        import threading
+        def _log_async():
+            try:
+                sb.table("chat_logs").insert({
+                    "question":     req.message,
+                    "answer":       answer[:500],
+                    "student_name": req.student_name,
+                    "major":        req.student_major,
+                    "year_of_study":req.student_year,
+                    "nationality":  req.student_nationality,
+                    "office_routed":detected_office,
+                    "session_id":   req.session_id,
+                    "asked_at":     datetime.now().isoformat(),
+                }).execute()
+            except Exception:
+                pass
+            try:
+                sb.table("office_analytics").insert({
+                    "office_id": detected_office,
+                    "question":  req.message,
+                    "asked_at":  datetime.now().isoformat(),
+                }).execute()
+            except Exception:
+                pass
+        threading.Thread(target=_log_async, daemon=True).start()
 
     from rag import OFFICES
     office_info = OFFICES.get(detected_office, OFFICES["general"])

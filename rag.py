@@ -66,7 +66,7 @@ def get_embeddings():
     return HuggingFaceEmbeddings(
         model_name=EMBED_MODEL,
         model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True},
+        encode_kwargs={"normalize_embeddings": True, "batch_size": 32},
     )
 
 
@@ -133,13 +133,10 @@ def get_answer(
     # ── No documents fallback ─────────────────────────────
     if doc_count == 0:
         prompt = (
-            f"You are UniAdvisor AI for Dunaujvaros Egyetem. "
-            f"You are helping {student_name}, a {student_year} student studying {student_major} "
-            f"(nationality: {student_nationality}). "
+            f"UniAdvisor AI, Dunaujvaros Egyetem. Student: {student_name}, {student_major}. "
             f"{nationality_note}"
-            f"No university documents have been uploaded yet — answer based on general knowledge. "
-            f"Respond in the same language as the question.\n\n"
-            f"Question: {question}\nAnswer:"
+            f"No documents uploaded yet — use general knowledge. Match the question's language.\n"
+            f"Q: {question}\nA:"
         )
         response = rotator.chat(
             messages=[{"role": "user", "content": prompt}],
@@ -151,14 +148,14 @@ def get_answer(
     where_filter = {"office": {"$eq": office}} if office != "general" else None
     try:
         if where_filter:
-            docs = vectorstore.similarity_search(question, k=4, filter=where_filter)
+            docs = vectorstore.similarity_search(question, k=3, filter=where_filter)
             if not docs:
                 print(f"[UniAdvisor] No docs for office '{office}', falling back to global search")
-                docs = vectorstore.similarity_search(question, k=4)
+                docs = vectorstore.similarity_search(question, k=3)
         else:
-            docs = vectorstore.similarity_search(question, k=4)
+            docs = vectorstore.similarity_search(question, k=3)
     except Exception:
-        docs = vectorstore.similarity_search(question, k=4)
+        docs = vectorstore.similarity_search(question, k=3)
 
     context = "\n\n".join([d.page_content for d in docs])
 
@@ -197,26 +194,19 @@ def get_answer(
 
     # ── Build messages array with real chat history ──────
     system_msg = (
-        f"You are UniAdvisor AI for Dunaujvaros Egyetem (University of Dunaújváros), Hungary.\n"
-        f"You are the virtual assistant for the {office_info['emoji']} {office_info['name']}.\n"
-        f"You are helping {student_name}, a {student_year} student studying {student_major} "
-        f"(nationality: {student_nationality}).\n"
+        f"UniAdvisor AI — {office_info['emoji']} {office_info['name']}, Dunaujvaros Egyetem.\n"
+        f"Student: {student_name}, {student_year}, {student_major} ({student_nationality}).\n"
         f"{nationality_note}"
-        f"\n{reply_lang_instruction}\n"
-        f"\nRules:\n"
-        f"- Answer ONLY based on the context provided below.\n"
-        f"- If the context does not contain the answer, clearly say so and suggest the student "
-        f"contact the {office_info['name']} directly.\n"
-        f"- Be concise, friendly, and helpful.\n"
-        f"- Use bullet points for lists.\n"
-        f"- Remember what was discussed earlier in this conversation.\n"
-        f"\nContext from {office_info['name']} documents:\n{context}"
+        f"{reply_lang_instruction}\n"
+        f"Answer from context only. If not in context, say so and direct to {office_info['name']}.\n"
+        f"Be concise and use bullet points for lists.\n"
+        f"Context:\n{context}"
     )
 
     # Build proper chat turns from history (last 10 messages = 5 exchanges)
     # This lets the model remember previous Q&A in the same session
     messages = [{"role": "system", "content": system_msg}]
-    for msg in (history or [])[-10:]:
+    for msg in (history or [])[-6:]:
         role = msg.get("role", "user")
         # Normalise role: only "user" and "assistant" are valid for Groq
         if role not in ("user", "assistant"):
@@ -227,7 +217,7 @@ def get_answer(
 
     response = rotator.chat(
         messages=messages,
-        max_tokens=700,
+        max_tokens=380,
         temperature=0.1,
         model="llama-3.1-8b-instant",
     )
