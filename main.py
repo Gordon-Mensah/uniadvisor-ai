@@ -42,15 +42,24 @@ def _seed_deadlines():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("[UniAdvisor] Starting up...")
-    get_embeddings()
-    get_vectorstore()
-    # Auto-purge any accidentally indexed system files on every startup
-    bad = purge_bad_documents()
-    if bad:
-        print(f"[UniAdvisor] Auto-purged bad entries: {bad}")
+    print("[UniAdvisor] Starting up — port open, loading models in background...")
     _seed_deadlines()
-    print("[UniAdvisor] Ready!")
+    # Load heavy models in background thread so port opens immediately.
+    # Render times out if port isn't bound within ~60s.
+    import threading
+    def _load():
+        try:
+            print("[UniAdvisor] Loading embedding model...")
+            get_embeddings()
+            print("[UniAdvisor] Loading vector store...")
+            get_vectorstore()
+            bad = purge_bad_documents()
+            if bad:
+                print(f"[UniAdvisor] Auto-purged: {bad}")
+            print("[UniAdvisor] Models ready!")
+        except Exception as e:
+            print(f"[UniAdvisor] Model load warning: {e}")
+    threading.Thread(target=_load, daemon=True).start()
     yield
 
 app = FastAPI(title="UniAdvisor AI", version="2.0.0", lifespan=lifespan)
@@ -611,4 +620,5 @@ def reply_escalation(esc_id: int, body: dict):
     raise HTTPException(status_code=404, detail="Escalation not found")
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
