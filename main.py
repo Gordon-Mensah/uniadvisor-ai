@@ -260,7 +260,12 @@ class EventCreate(BaseModel):
 
 @app.get("/")
 def root():
-    return {"status": "UniAdvisor AI v3.0 running"}
+    """Serve React app at root. Falls back to JSON if dist not built."""
+    import os as _os
+    index = _os.path.join(_os.path.dirname(__file__), "dist", "index.html")
+    if _os.path.isfile(index):
+        return FileResponse(index, media_type="text/html")
+    return {"status": "UniAdvisor AI v3.0 running — frontend not built yet"}
 
 @app.get("/health")
 def health():
