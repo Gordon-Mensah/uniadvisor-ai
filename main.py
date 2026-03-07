@@ -166,12 +166,10 @@ def audit(actor_email: str, actor_role: str, action: str, target: str = None, de
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("[UniAdvisor] Starting up...")
-    print("[UniAdvisor] Loading embedding model...")
-    get_embeddings()
-    print("[UniAdvisor] Loading vector store...")
-    get_vectorstore()
     print(f"[UniAdvisor] bcrypt: {'✅' if BCRYPT_AVAILABLE else '⚠️ fallback'}")
     print(f"[UniAdvisor] Supabase: {'✅' if SUPABASE_AVAILABLE else '⚠️ offline mode'}")
+    # NOTE: Embedding model loads lazily on first /chat request
+    # (avoids Render port-binding timeout on cold start)
     print("[UniAdvisor] Ready!")
     yield
     print("[UniAdvisor] Shutting down.")

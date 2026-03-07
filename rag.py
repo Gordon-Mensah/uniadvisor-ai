@@ -10,8 +10,15 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from groq_key_rotator import get_groq_rotator
 
-CHROMA_DIR  = "./chroma_db"
+CHROMA_DIR  = os.getenv("CHROMA_DIR", "./chroma_db")
 EMBED_MODEL = "all-MiniLM-L6-v2"
+
+# Cache the model in /opt/render/project/src/.cache so it
+# doesn't re-download on every deploy
+os.environ.setdefault(
+    "SENTENCE_TRANSFORMERS_HOME",
+    os.getenv("SENTENCE_TRANSFORMERS_HOME", "./.model_cache")
+)
 
 # ── State ─────────────────────────────────────────────────
 _answer_cache = {}
@@ -188,13 +195,7 @@ def get_answer(
         f"You MUST reply in {reply_lang} only. Do not switch languages."
     )
 
-    # ── Build conversation history string ─────────────────
-    history_str = ""
-    for msg in (history or [])[-2:]:
-        role = "Student" if msg.get("role") == "user" else "Advisor"
-        history_str += f"{role}: {msg.get('content', '')}\n"
-
-    # ── System prompt ─────────────────────────────────────
+    # ── Build messages array with real chat history ──────
     system_msg = (
         f"You are UniAdvisor AI for Dunaujvaros Egyetem (University of Dunaújváros), Hungary.\n"
         f"You are the virtual assistant for the {office_info['emoji']} {office_info['name']}.\n"
@@ -208,17 +209,21 @@ def get_answer(
         f"contact the {office_info['name']} directly.\n"
         f"- Be concise, friendly, and helpful.\n"
         f"- Use bullet points for lists.\n"
+        f"- Remember what was discussed earlier in this conversation.\n"
         f"\nContext from {office_info['name']} documents:\n{context}"
     )
 
+    # Build proper chat turns from history (last 10 messages = 5 exchanges)
+    # This lets the model remember previous Q&A in the same session
     messages = [{"role": "system", "content": system_msg}]
-    if history_str:
-        messages.append({
-            "role": "user",
-            "content": f"Recent conversation:\n{history_str}\nNew question: {question}"
-        })
-    else:
-        messages.append({"role": "user", "content": question})
+    for msg in (history or [])[-10:]:
+        role = msg.get("role", "user")
+        # Normalise role: only "user" and "assistant" are valid for Groq
+        if role not in ("user", "assistant"):
+            role = "user"
+        messages.append({"role": role, "content": msg.get("content", "")})
+    # Always append the current question as the final user turn
+    messages.append({"role": "user", "content": question})
 
     response = rotator.chat(
         messages=messages,

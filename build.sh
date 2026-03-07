@@ -5,9 +5,6 @@ set -e
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  UniAdvisor AI — Render Build Script"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-# ── Force Python 3.11 via environment variable ────────────
-# Render respects PYTHON_VERSION env var set in dashboard
 echo "Python: $(python --version)"
 echo "Node:   $(node --version)"
 
@@ -17,12 +14,24 @@ echo "▶ Installing Python dependencies..."
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# ── 2. Node dependencies ──────────────────────────────────
+# ── 2. Pre-download embedding model at build time ─────────
+# This avoids a timeout on first request after deploy
+echo ""
+echo "▶ Pre-downloading embedding model (all-MiniLM-L6-v2)..."
+export SENTENCE_TRANSFORMERS_HOME="./.model_cache"
+python -c "
+from sentence_transformers import SentenceTransformer
+print('Downloading all-MiniLM-L6-v2...')
+SentenceTransformer('all-MiniLM-L6-v2')
+print('Model ready.')
+"
+
+# ── 3. Node dependencies ──────────────────────────────────
 echo ""
 echo "▶ Installing Node dependencies..."
 npm install
 
-# ── 3. Build React app ────────────────────────────────────
+# ── 4. Build React app ────────────────────────────────────
 echo ""
 echo "▶ Building React frontend..."
 npm run build
