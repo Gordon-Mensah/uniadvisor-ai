@@ -107,6 +107,7 @@ export default function StaffPortal({ user, onLogout }) {
   const [sendingMsg, setSendingMsg] = useState(false);
   // UI
   const [toast, setToast]         = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const MAX_CHARS = 500;
 
   const showToast = (msg, type="success") => setToast({ msg, type });
@@ -291,10 +292,13 @@ export default function StaffPortal({ user, onLogout }) {
   };
 
   return (
-    <div style={{ display:"flex", height:"100vh", fontFamily:"'IBM Plex Sans','Segoe UI',system-ui,sans-serif", background:S.snow, color:S.text, overflow:"hidden" }}>
+    <div style={{ display:"flex", height:"100vh", fontFamily:"'IBM Plex Sans','Segoe UI',system-ui,sans-serif", background:S.snow, color:S.text, overflow:"hidden", position:"relative" }}>
+
+      {/* Mobile overlay */}
+      {sidebarOpen && <div onClick={()=>setSidebarOpen(false)} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:99 }} />}
 
       {/* ── SIDEBAR ── */}
-      <aside style={{ width:224, background:S.white, borderRight:`1px solid ${S.border}`, display:"flex", flexDirection:"column", flexShrink:0 }}>
+      <aside className={sidebarOpen?"sp-sidebar-open":"sp-sidebar-closed"} style={{ width:224, background:S.white, borderRight:`1px solid ${S.border}`, display:"flex", flexDirection:"column", flexShrink:0 }}>
         <div style={{ padding:"24px 20px 20px", borderBottom:`1px solid ${S.border}` }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             <div style={{ width:36, height:36, borderRadius:10, background:`linear-gradient(135deg,${S.teal},${S.teal2})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, boxShadow:`0 4px 12px ${S.teal}33` }}>👩‍🏫</div>
@@ -340,10 +344,13 @@ export default function StaffPortal({ user, onLogout }) {
       <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
         {/* Topbar */}
-        <header style={{ background:S.white, borderBottom:`1px solid ${S.border}`, padding:"0 32px", height:60, display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
-          <div>
-            <h1 style={{ fontSize:16, fontWeight:700, color:S.text, margin:0 }}>{PAGE[section].title}</h1>
-            <p style={{ fontSize:11, color:S.muted, margin:0 }}>{PAGE[section].sub}</p>
+        <header style={{ background:S.white, borderBottom:`1px solid ${S.border}`, padding:"0 16px", height:60, display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <button className="sp-hamburger" onClick={()=>setSidebarOpen(o=>!o)} style={{ display:"none",background:"transparent",border:"none",cursor:"pointer",fontSize:20,color:S.text,padding:4 }}>☰</button>
+            <div>
+              <h1 style={{ fontSize:16, fontWeight:700, color:S.text, margin:0 }}>{PAGE[section].title}</h1>
+              <p style={{ fontSize:11, color:S.muted, margin:0 }}>{PAGE[section].sub}</p>
+            </div>
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:12 }}>
             <div style={{ display:"flex", alignItems:"center", gap:6, background:S.greenBg, border:"1px solid #A7F3D0", borderRadius:20, padding:"4px 12px" }}>
@@ -356,10 +363,10 @@ export default function StaffPortal({ user, onLogout }) {
 
         {/* ══ PAGE: ANNOUNCEMENTS ═════════════════════════════════ */}
         {section === "announcements" && (
-          <div style={{ flex:1, overflow:"hidden", display:"flex" }}>
+          <div className="sp-ann-layout" style={{ flex:1, overflow:"hidden", display:"flex" }}>
 
             {/* Left: Composer */}
-            <div style={{ flex:"0 0 52%", overflowY:"auto", padding:"28px 24px 28px 32px", borderRight:`1px solid ${S.border}` }}>
+            <div className="sp-ann-left" style={{ flex:"0 0 52%", overflowY:"auto", padding:"20px 16px 20px 20px", borderRight:`1px solid ${S.border}` }}>
               <div style={{ background:S.white, borderRadius:16, border:`1px solid ${S.border}`, overflow:"hidden", marginBottom:24, boxShadow:"0 1px 4px rgba(0,0,0,0.04)" }}>
                 <div style={{ padding:"16px 20px", borderBottom:`1px solid ${S.border}`, display:"flex", alignItems:"center", gap:8 }}>
                   <div style={{ width:28, height:28, borderRadius:8, background:S.tealBg, border:`1px solid ${S.tealBdr}`, display:"flex", alignItems:"center", justifyContent:"center", color:S.teal }}><I.bell /></div>
@@ -526,7 +533,7 @@ export default function StaffPortal({ user, onLogout }) {
             </div>
 
             {/* Table header */}
-            <div style={{ display:"grid", gridTemplateColumns:"180px 140px 1fr 100px", gap:12, padding:"8px 14px", background:S.ice, borderRadius:8, marginBottom:8, fontSize:11, fontWeight:700, color:S.muted, textTransform:"uppercase", letterSpacing:"0.5px" }}>
+            <div className="sp-table-header" style={{ display:"grid", gridTemplateColumns:"180px 140px 1fr 100px", gap:12, padding:"8px 14px", background:S.ice, borderRadius:8, marginBottom:8, fontSize:11, fontWeight:700, color:S.muted, textTransform:"uppercase", letterSpacing:"0.5px" }}>
               <div>Student</div><div>Major</div><div>Question</div><div>Time</div>
             </div>
 
@@ -626,7 +633,7 @@ export default function StaffPortal({ user, onLogout }) {
         {section === "messages" && (
           <div style={{ flex:1, overflow:"hidden", display:"flex" }}>
             {/* Compose */}
-            <div style={{ flex:"0 0 380px", borderRight:`1px solid ${S.border}`, padding:"24px", overflowY:"auto", background:S.white }}>
+            <div className="sp-msg-left" style={{ flex:"0 0 380px", borderRight:`1px solid ${S.border}`, padding:"20px 16px", overflowY:"auto", background:S.white }}>
               <div style={{ fontSize:13, fontWeight:700, color:S.text, marginBottom:4 }}>Compose Message</div>
               <div style={{ fontSize:11, color:S.muted, marginBottom:16 }}>Saved permanently to Supabase</div>
 
@@ -719,6 +726,20 @@ export default function StaffPortal({ user, onLogout }) {
         body { overflow:hidden; }
         ::-webkit-scrollbar { width:4px; }
         ::-webkit-scrollbar-thumb { background:#CBD5E1; border-radius:10px; }
+
+        /* ── Mobile ── */
+        @media(max-width:767px){
+          .sp-sidebar-closed{position:fixed!important;left:-240px!important;top:0;bottom:0;z-index:100;transition:left 0.25s;}
+          .sp-sidebar-open{position:fixed!important;left:0!important;top:0;bottom:0;z-index:100;transition:left 0.25s;box-shadow:4px 0 24px rgba(0,0,0,0.18);}
+          .sp-hamburger{display:block!important;}
+          .sp-ann-layout{flex-direction:column!important;overflow-y:auto!important;}
+          .sp-ann-left{flex:none!important;width:100%!important;border-right:none!important;border-bottom:1px solid #E2E8F0;padding:16px!important;}
+          .sp-msg-left{flex:none!important;width:100%!important;border-right:none!important;border-bottom:1px solid #E2E8F0;}
+          .sp-table-header{display:none!important;}
+        }
+        @media(min-width:768px){
+          .sp-sidebar-closed,.sp-sidebar-open{position:relative!important;left:0!important;}
+        }
       `}</style>
     </div>
   );

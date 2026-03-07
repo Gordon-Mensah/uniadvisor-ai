@@ -401,7 +401,7 @@ function Bubble({ msg, C, isNew, onFeedback, uiLang }) {
         {!isUser && (
           <div style={{ width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,#0D9488,#0F766E)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,marginRight:10,flexShrink:0,marginTop:2 }}>🤖</div>
         )}
-        <div style={{ maxWidth:"72%",padding:"12px 16px",borderRadius:isUser?"18px 18px 4px 18px":"18px 18px 18px 4px",background:isUser?`linear-gradient(135deg,${C.bubble_user},${C.bubble_user}dd)`:C.bubble_ai,color:isUser?C.bubble_user_text:C.bubble_ai_text,fontSize:14,lineHeight:1.65,boxShadow:isUser?`0 4px 14px ${C.accent}33`:`0 1px 4px rgba(0,0,0,0.06)`,border:!isUser?`1px solid ${C.border}`:"none",whiteSpace:"pre-wrap" }}>
+        <div style={{ maxWidth:"85%",padding:"10px 14px",borderRadius:isUser?"18px 18px 4px 18px":"18px 18px 18px 4px",background:isUser?`linear-gradient(135deg,${C.bubble_user},${C.bubble_user}dd)`:C.bubble_ai,color:isUser?C.bubble_user_text:C.bubble_ai_text,fontSize:14,lineHeight:1.65,boxShadow:isUser?`0 4px 14px ${C.accent}33`:`0 1px 4px rgba(0,0,0,0.06)`,border:!isUser?`1px solid ${C.border}`:"none",whiteSpace:"pre-wrap" }}>
           {isUser ? msg.content : (isNew ? <StreamingText text={msg.content} C={C} /> : <span style={{ whiteSpace:"pre-wrap",lineHeight:1.65,fontSize:14 }}>{msg.content}</span>)}
         </div>
       </div>
@@ -489,7 +489,7 @@ function LoginScreen({ onLogin }) {
           <button key={code} onClick={()=>setUiLang(code)} style={{ padding:"5px 12px",borderRadius:8,border:`1px solid ${uiLang===code?"#0D9488":"rgba(255,255,255,0.15)"}`,background:uiLang===code?"rgba(13,148,136,0.2)":"transparent",color:uiLang===code?"#5EEAD4":"#64748B",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>{label}</button>
         ))}
       </div>
-      <div style={{ width:"100%",maxWidth:480,padding:32,position:"relative",zIndex:1 }}>
+      <div style={{ width:"100%",maxWidth:480,padding:"24px 16px",position:"relative",zIndex:1 }}>
         <div style={{ textAlign:"center",marginBottom:32 }}>
           <div style={{ fontSize:44,marginBottom:10 }}>🎓</div>
           <h1 style={{ fontSize:26,fontWeight:800,color:"#F1F5F9",margin:"0 0 6px",letterSpacing:"-0.5px" }}>UniAdvisor AI</h1>
@@ -548,6 +548,8 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
   const C   = THEMES[darkMode?"dark":"light"];
   // UI language: from user preference, or browser, defaults en
   const [uiLang,setUiLang]     = useState(user.language_pref||"en");
+  const [sidebarOpen,setSidebarOpen] = useState(false);
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   const t = T[uiLang]||T.en;
   const isAdmin = user.role==="admin";
 
@@ -664,10 +666,13 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
   ];
 
   return (
-    <div style={{ display:"flex",height:"100vh",background:C.bg,color:C.text,fontFamily:"'IBM Plex Sans','Segoe UI',system-ui,sans-serif",overflow:"hidden" }}>
+    <div style={{ display:"flex",height:"100vh",background:C.bg,color:C.text,fontFamily:"'IBM Plex Sans','Segoe UI',system-ui,sans-serif",overflow:"hidden",position:"relative" }}>
+
+      {/* Mobile overlay */}
+      {sidebarOpen && <div onClick={()=>setSidebarOpen(false)} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:99,display:"none" }} className="mobile-overlay" />}
 
       {/* Sidebar */}
-      <aside style={{ width:240,background:C.sidebar,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",flexShrink:0 }}>
+      <aside className={sidebarOpen?"sidebar-open":"sidebar-closed"} style={{ width:240,background:C.sidebar,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",flexShrink:0 }}>
         {/* Brand */}
         <div style={{ padding:"20px 16px 16px",borderBottom:`1px solid ${C.border}` }}>
           <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12 }}>
@@ -742,10 +747,13 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
       {/* Chat area */}
       <div style={{ flex:1,display:"flex",flexDirection:"column",overflow:"hidden" }}>
         {/* Topbar */}
-        <div style={{ padding:"0 24px",height:54,display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:`1px solid ${C.border}`,background:C.surface,flexShrink:0 }}>
-          <div>
-            <div style={{ fontSize:14,fontWeight:700,color:C.text }}>{t.topbarTitle}</div>
-            <div style={{ fontSize:11,color:C.muted }}>{t.topbarSub}</div>
+        <div style={{ padding:"0 16px",height:54,display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:`1px solid ${C.border}`,background:C.surface,flexShrink:0 }}>
+          <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+            <button className="hamburger-btn" onClick={()=>setSidebarOpen(o=>!o)} style={{ display:"none",background:"transparent",border:"none",cursor:"pointer",padding:4,color:C.text,fontSize:20 }}>☰</button>
+            <div>
+              <div style={{ fontSize:14,fontWeight:700,color:C.text }}>{t.topbarTitle}</div>
+              <div style={{ fontSize:11,color:C.muted }}>{t.topbarSub}</div>
+            </div>
           </div>
           <div style={{ display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#059669",background:"#F0FDF4",border:"1px solid #A7F3D0",borderRadius:20,padding:"4px 12px" }}>
             <div style={{ width:6,height:6,borderRadius:"50%",background:"#059669",animation:"pulse 2s infinite" }} />
@@ -757,7 +765,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
         <AnnouncementBanner C={C} userEmail={user.email} />
 
         {/* Office pills */}
-        <div style={{ padding:"8px 24px 0",display:"flex",gap:6,flexWrap:"wrap",flexShrink:0,borderBottom:`1px solid ${C.border}` }}>
+        <div style={{ padding:"8px 12px 0",display:"flex",gap:6,flexShrink:0,borderBottom:`1px solid ${C.border}`,overflowX:"auto",WebkitOverflowScrolling:"touch" }}>
           {OFFICE_PILLS.map(p=>(
             <button key={p.id} onClick={()=>setOffice(p.id)} style={{ padding:"4px 12px",borderRadius:20,border:`1px solid ${office===p.id?C.accent:C.border}`,background:office===p.id?`${C.accent}15`:"transparent",color:office===p.id?C.accent:C.muted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginBottom:8,transition:"all 0.15s" }}>{p.label}</button>
           ))}
@@ -808,7 +816,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
 
         {/* Input */}
         <div style={{ padding:"12px 24px 16px",borderTop:`1px solid ${C.border}`,background:C.surface,flexShrink:0 }}>
-          <div style={{ display:"flex",gap:10,alignItems:"flex-end" }}>
+          <div style={{ display:"flex",gap:8,alignItems:"flex-end" }}>
             <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} placeholder={t.placeholder} rows={1}
               onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}}
               style={{ flex:1,padding:"11px 14px",border:`1.5px solid ${C.inputBorder}`,borderRadius:14,fontSize:14,fontFamily:"inherit",color:C.text,background:C.input,outline:"none",resize:"none",lineHeight:1.5,transition:"border-color 0.15s",maxHeight:120 }}
@@ -838,6 +846,31 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
         *{box-sizing:border-box;margin:0;padding:0;}
         ::-webkit-scrollbar{width:4px;}
         ::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:10px;}
+
+        /* ── Mobile responsive ── */
+        @media(max-width:767px){
+          .sidebar-closed{
+            position:fixed!important;
+            left:-260px!important;
+            top:0;bottom:0;
+            z-index:100;
+            transition:left 0.25s ease;
+            box-shadow:4px 0 24px rgba(0,0,0,0.18);
+          }
+          .sidebar-open{
+            position:fixed!important;
+            left:0!important;
+            top:0;bottom:0;
+            z-index:100;
+            transition:left 0.25s ease;
+            box-shadow:4px 0 24px rgba(0,0,0,0.18);
+          }
+          .mobile-overlay{ display:block!important; }
+          .hamburger-btn{ display:block!important; }
+        }
+        @media(min-width:768px){
+          .sidebar-closed,.sidebar-open{ position:relative!important;left:0!important; }
+        }
       `}</style>
     </div>
   );

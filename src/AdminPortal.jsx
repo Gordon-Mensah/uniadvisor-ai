@@ -118,6 +118,7 @@ function HBar({ label, value, max, color }) {
 // ── Main ───────────────────────────────────────────────────────
 export default function AdminPortal({ user, token, onLogout }) {
   const [section, setSection]   = useState("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [stats, setStats]       = useState(null);
   const [docs, setDocs]         = useState([]);
   const [anns, setAnns]         = useState([]);
@@ -256,10 +257,13 @@ export default function AdminPortal({ user, token, onLogout }) {
   };
 
   return (
-    <div style={{ display: "flex", height: "100vh", fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', monospace", background: D.bg, color: D.text, overflow: "hidden" }}>
+    <div style={{ display: "flex", height: "100vh", fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', monospace", background: D.bg, color: D.text, overflow: "hidden", position: "relative" }}>
+
+      {/* Mobile overlay */}
+      {sidebarOpen && <div onClick={()=>setSidebarOpen(false)} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:99 }} />}
 
       {/* ── LEFT SIDEBAR ── */}
-      <aside style={{ width: 228, background: D.surface, borderRight: `1px solid ${D.border}`, display: "flex", flexDirection: "column", flexShrink: 0, position: "relative", overflow: "hidden" }}>
+      <aside className={sidebarOpen?"ap-sidebar-open":"ap-sidebar-closed"} style={{ width: 228, background: D.surface, borderRight: `1px solid ${D.border}`, display: "flex", flexDirection: "column", flexShrink: 0, position: "relative", overflow: "hidden" }}>
         {/* Ambient glow top */}
         <div style={{ position: "absolute", top: -60, left: -60, width: 180, height: 180, borderRadius: "50%", background: D.purpleGl, filter: "blur(40px)", pointerEvents: "none" }} />
 
@@ -322,8 +326,9 @@ export default function AdminPortal({ user, token, onLogout }) {
       <main style={{ flex: 1, overflowY: "auto", position: "relative" }}>
 
         {/* Top bar */}
-        <div style={{ position: "sticky", top: 0, zIndex: 10, background: `${D.bg}e0`, backdropFilter: "blur(12px)", borderBottom: `1px solid ${D.border}`, padding: "0 32px", height: 54, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ position: "sticky", top: 0, zIndex: 10, background: `${D.bg}e0`, backdropFilter: "blur(12px)", borderBottom: `1px solid ${D.border}`, padding: "0 16px", height: 54, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button className="ap-hamburger" onClick={()=>setSidebarOpen(o=>!o)} style={{ display:"none",background:"transparent",border:"none",cursor:"pointer",color:D.text,fontSize:18,padding:4,marginRight:4 }}>☰</button>
             <span style={{ fontSize: 10, color: D.muted, letterSpacing: "1px" }}>ADMIN /</span>
             <span style={{ fontSize: 12, fontWeight: 700, color: D.violet, letterSpacing: "0.5px", textTransform: "uppercase" }}>{section}</span>
           </div>
@@ -332,7 +337,7 @@ export default function AdminPortal({ user, token, onLogout }) {
           </div>
         </div>
 
-        <div style={{ padding: "28px 32px" }}>
+        <div className="ap-content-pad" style={{ padding: "20px 16px" }}>
 
           {/* ══ DASHBOARD ══════════════════════════════════════════ */}
           {section === "dashboard" && (
@@ -837,6 +842,18 @@ export default function AdminPortal({ user, token, onLogout }) {
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: ${D.border2}; border-radius: 10px; }
         ::-webkit-scrollbar-track { background: transparent; }
+
+        /* ── Mobile ── */
+        @media(max-width:767px){
+          .ap-sidebar-closed{position:fixed!important;left:-240px!important;top:0;bottom:0;z-index:100;transition:left 0.25s;}
+          .ap-sidebar-open{position:fixed!important;left:0!important;top:0;bottom:0;z-index:100;transition:left 0.25s;box-shadow:6px 0 30px rgba(0,0,0,0.5);}
+          .ap-hamburger{display:block!important;}
+          .ap-content-pad{padding:16px 12px!important;}
+        }
+        @media(min-width:768px){
+          .ap-sidebar-closed,.ap-sidebar-open{position:relative!important;left:0!important;}
+          .ap-content-pad{padding:28px 32px!important;}
+        }
       `}</style>
     </div>
   );
