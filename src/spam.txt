@@ -1,0 +1,1661 @@
+import { useState, useRef, useEffect } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+// ── Supabase client (DB only, no Supabase Auth) ───────────
+const SUPABASE_URL     = import.meta.env.VITE_SUPABASE_URL     || "https://your-project.supabase.co";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "your-anon-key";
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
+// ── Translations ──────────────────────────────────────────
+const T = {
+  en: {
+    appName:"UniAdvisor", university:"Dunaujvaros Egyetem",
+    newChat:"+ New Conversation",
+    nav:[
+      {icon:"📚",label:"Courses & Curriculum"},
+      {icon:"🏛️",label:"Policies & Rules"},
+      {icon:"📅",label:"Academic Calendar"},
+      {icon:"💰",label:"Fees & Scholarships"},
+      {icon:"🎯",label:"Career Guidance"},
+    ],
+    navQuery:(l)=>`Tell me about ${l} at Dunaujvaros Egyetem`,
+    language:"LANGUAGE", darkMode:"Dark Mode", lightMode:"Light Mode",
+    adminPanel:"Admin Panel",
+    topbarTitle:"AI Academic Advisor", topbarSub:"RAG · Groq LLaMA3 · ChromaDB",
+    export:"Export Chat", online:"Online",
+    welcomeHi:(n)=>`Hi ${n}, I'm your AI Advisor!`,
+    welcomeSub:"Ask me anything about courses, deadlines, scholarships, or university policies.",
+    suggestions:[
+      {icon:"📚",title:"Course Planning",q:"What courses should I take next semester?"},
+      {icon:"🎓",title:"Graduation Requirements",q:"What are the graduation requirements for my major?"},
+      {icon:"📅",title:"Key Deadlines",q:"When is the deadline to drop a course without penalty?"},
+      {icon:"💰",title:"Scholarships & Aid",q:"What scholarships am I eligible for?"},
+    ],
+    inputPlaceholder:"Ask about courses, deadlines, scholarships, policies...",
+    quickTags:["Core courses","GPA requirements","Leave of absence","Registration dates","Visa info","Housing"],
+    stressMsg:"It seems you might be stressed — I'm here to help!",
+    serverError:"Could not reach the server. Please make sure the backend is running.",
+    feedbackThanks:"Thanks!", exportFilename:"UniAdvisor_Chat",
+    followupDefault:["Tell me more","What are the requirements?","Who should I contact?"],
+    adminTitle:"Admin Panel", adminSub:"UniAdvisor AI — Dunaujvaros Egyetem",
+    tabs:["Overview","Announcements","FAQ","Documents","Translate"],
+    statsTitle:"Usage Statistics", questions:"Questions", chunks:"Chunks", cached:"Cached", satisfaction:"Satisfaction",
+    recentQ:"Recent Questions",
+    annTitle:"Announcements", annPlaceholder:"Type announcement for students...",
+    annPost:"Post Announcement", annNone:"No active announcements.", annDelete:"Remove",
+    faqTitle:"Auto-Generated FAQ", faqSub:"Based on most asked questions", faqNone:"No questions asked yet.",
+    faqAsked:(n)=>`Asked ${n} time${n!==1?"s":""}`,
+    docsTitle:"Uploaded Documents", docsUpload:"Upload New Document",
+    docsClick:"Click to upload PDF, TXT, or DOCX", docsSub:"Course catalogs, policies, handbooks",
+    uploading:"Uploading and indexing...", expiryTitle:"Document Expiry Alerts",
+    expiryNone:"All documents are up to date.", expiryDays:(n)=>`${n} days old`,
+    transTitle:"Auto-Translate Document", transSub:"Upload a document and translate it automatically",
+    transClick:"Click to upload document for translation",
+    transLang:"Target Language", transBtn:"Translate", transRunning:"Translating...",
+    transResult:"Translation Result", transCopy:"Copy Text", noServerMsg:"Upload failed.",
+  },
+  hu: {
+    appName:"UniAdvisor", university:"Dunaújvárosi Egyetem",
+    newChat:"+ Új Beszélgetés",
+    nav:[
+      {icon:"📚",label:"Tantárgyak és tanterv"},
+      {icon:"🏛️",label:"Szabályzatok és előírások"},
+      {icon:"📅",label:"Tanév naptár"},
+      {icon:"💰",label:"Díjak és ösztöndíjak"},
+      {icon:"🎯",label:"Karrier tanácsadás"},
+    ],
+    navQuery:(l)=>`Mesélj nekem erről: ${l} a Dunaújvárosi Egyetemen`,
+    language:"NYELV", darkMode:"Sötét mód", lightMode:"Világos mód",
+    adminPanel:"Admin panel",
+    topbarTitle:"AI Tanulmányi Tanácsadó", topbarSub:"RAG · Groq LLaMA3 · ChromaDB",
+    export:"Exportálás", online:"Online",
+    welcomeHi:(n)=>`Szia ${n}, én vagyok az AI tanácsadód!`,
+    welcomeSub:"Kérdezz bármit a tantárgyakról, határidőkről, ösztöndíjakról vagy az egyetemi szabályzatokról.",
+    suggestions:[
+      {icon:"📚",title:"Tantárgy tervezés",q:"Milyen tantárgyakat vegyek fel jövő félévben?"},
+      {icon:"🎓",title:"Végzési követelmények",q:"Milyen követelményeket kell teljesítenem a diplomához?"},
+      {icon:"📅",title:"Fontos határidők",q:"Mikor van a tantárgyleadás határideje?"},
+      {icon:"💰",title:"Ösztöndíjak és támogatás",q:"Milyen ösztöndíjakra vagyok jogosult?"},
+    ],
+    inputPlaceholder:"Kérdezz az egytemről, határidőkről, ösztöndíjakról...",
+    quickTags:["Kötelező tárgyak","GPA követelmények","Halasztás","Beiratkozási dátumok","Vízum info","Kollégium"],
+    stressMsg:"Úgy tűnik, stresszes vagy — itt vagyok, hogy segítsek!",
+    serverError:"Nem sikerült elérni a szervert.",
+    feedbackThanks:"Köszönöm!", exportFilename:"UniAdvisor_Beszelgetes",
+    followupDefault:["Mondj többet","Mik a követelmények?","Kit kell megkeresnem?"],
+    adminTitle:"Admin panel", adminSub:"UniAdvisor AI — Dunaújvárosi Egyetem",
+    tabs:["Áttekintés","Hirdetmények","GYIK","Dokumentumok","Fordítás"],
+    statsTitle:"Használati statisztikák", questions:"Kérdések", chunks:"Részek", cached:"Gyorsítótár", satisfaction:"Elégedettség",
+    recentQ:"Legutóbbi kérdések",
+    annTitle:"Hirdetmények", annPlaceholder:"Írj hirdetményt a hallgatóknak...",
+    annPost:"Hirdetmény közzététele", annNone:"Nincs aktív hirdetmény.", annDelete:"Törlés",
+    faqTitle:"Automatikusan generált GYIK", faqSub:"A leggyakoribb kérdések alapján", faqNone:"Még nincsenek kérdések.",
+    faqAsked:(n)=>`${n} alkalommal kérdezték`,
+    docsTitle:"Feltöltött dokumentumok", docsUpload:"Új dokumentum feltöltése",
+    docsClick:"Kattints PDF, TXT vagy DOCX feltöltéséhez", docsSub:"Tantárgyjegyzékek, szabályzatok, kézikönyvek",
+    uploading:"Feltöltés és indexelés...", expiryTitle:"Dokumentum lejárati figyelmeztetések",
+    expiryNone:"Minden dokumentum naprakész.", expiryDays:(n)=>`${n} napos`,
+    transTitle:"Automatikus dokumentumfordítás", transSub:"Tölts fel egy dokumentumot és fordítsd le automatikusan",
+    transClick:"Kattints a fordítandó dokumentum feltöltéséhez",
+    transLang:"Célnyelv", transBtn:"Fordítás", transRunning:"Fordítás folyamatban...",
+    transResult:"Fordítás eredménye", transCopy:"Szöveg másolása", noServerMsg:"Feltöltés sikertelen.",
+  },
+};
+
+// ── Themes ────────────────────────────────────────────────
+const THEMES = {
+  light:{navy:"#1E1B4B",indigo:"#4F46E5",violet:"#7C3AED",accent:"#818CF8",light:"#EDE9FE",bg:"#F1F5F9",white:"#FFFFFF",text:"#1E293B",muted:"#64748B",border:"#E2E8F0",green:"#10B981",sidebarText:"#C7D2FE",msgBg:"#FFFFFF",inputBg:"#F1F5F9"},
+  dark:{navy:"#0F0D2E",indigo:"#4F46E5",violet:"#7C3AED",accent:"#818CF8",light:"#1E1B4B",bg:"#0F172A",white:"#1E293B",text:"#E2E8F0",muted:"#94A3B8",border:"#334155",green:"#10B981",sidebarText:"#818CF8",msgBg:"#1E293B",inputBg:"#0F172A"},
+};
+
+// ── Role config ───────────────────────────────────────────
+const ROLE_CONFIG = {
+  student:{label:"Student Portal",icon:"🎓",gradient:"linear-gradient(135deg,#4F46E5,#7C3AED)",badge:"#4F46E5",desc:"Your personal AI academic advisor"},
+  staff:  {label:"Staff Portal",  icon:"👩‍🏫",gradient:"linear-gradient(135deg,#0891B2,#0E7490)",badge:"#0891B2",desc:"Manage announcements & student communications"},
+  admin:  {label:"Admin Portal",  icon:"⚙️", gradient:"linear-gradient(135deg,#7C3AED,#4F46E5)",badge:"#7C3AED",desc:"Full system control & analytics"},
+};
+
+// ── Icons ─────────────────────────────────────────────────
+const SendIcon    =()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>;
+const BotIcon     =()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg>;
+const MicIcon     =()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>;
+const ThumbUp     =()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>;
+const ThumbDown   =()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/><path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>;
+const DownloadIcon=()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
+const SunIcon     =()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>;
+const MoonIcon    =()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>;
+const ChartIcon   =()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>;
+const DocIcon     =()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
+const LogoutIcon  =()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
+const EyeIcon     =()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
+const EyeOffIcon  =()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>;
+
+// ── Helpers ───────────────────────────────────────────────
+const detectSentiment=t=>{const w=["stress","worried","confused","lost","help","urgent","panic","anxious","frustrated","stressz","segítség","nem értem"];return w.some(x=>t.toLowerCase().includes(x))?"stressed":"neutral";};
+const generateFollowups=(answer,t)=>{const map=[{kw:["course","curriculum","tantárgy"],q:t.lang==="hu"?["Mik az előfeltételek?","Hány kredit?"]:["What are the prerequisites?","How many credits?"]},{kw:["fee","tuition","díj"],q:t.lang==="hu"?["Van részletfizetés?","Milyen ösztöndíjak?"]:["Payment plans?","What scholarships?"]},{kw:["scholarship","ösztöndíj"],q:t.lang==="hu"?["Hogyan jelentkezzek?","Mi a határidő?"]:["How do I apply?","What is the deadline?"]},{kw:["deadline","határidő"],q:t.lang==="hu"?["Mi van ha elmulasztom?","Kaphatok hosszabbítást?"]:["What if I miss it?","Can I get extension?"]}];const lower=answer.toLowerCase();for(const{kw,q} of map) if(kw.some(k=>lower.includes(k))) return q;return t.followupDefault;};
+
+// ── Mini bar chart ─────────────────────────────────────────
+function BarChart({data,color,height=80}){if(!data||Object.keys(data).length===0)return <div style={{color:"#94A3B8",fontSize:12,textAlign:"center",padding:"20px 0"}}>No data yet</div>;const entries=Object.entries(data).slice(-6);const max=Math.max(...entries.map(([,v])=>v),1);return(<div style={{display:"flex",alignItems:"flex-end",gap:6,height,padding:"0 4px"}}>{entries.map(([label,val])=>(<div key={label} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}><div style={{fontSize:10,color:"#94A3B8",fontWeight:600}}>{val}</div><div style={{width:"100%",background:color,borderRadius:"4px 4px 0 0",height:`${(val/max)*height*0.8}px`,minHeight:4,transition:"height .3s"}}/><div style={{fontSize:9,color:"#94A3B8",textAlign:"center",maxWidth:50,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</div></div>))}</div>);}
+
+// ── Streaming text ─────────────────────────────────────────
+function StreamingText({text}){const [d,setD]=useState("");const idx=useRef(0);useEffect(()=>{if(!text)return;idx.current=0;setD("");const words=text.split(" ");const iv=setInterval(()=>{if(idx.current<words.length){setD(words.slice(0,idx.current+1).join(" "));idx.current++;}else clearInterval(iv);},20);return()=>clearInterval(iv);},[text]);return <span style={{whiteSpace:"pre-wrap"}}>{d}</span>;}
+function TypingDots({C}){return(<div style={{display:"flex",gap:5,padding:"4px 0",alignItems:"center"}}>{[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.9s ${i*0.15}s infinite`}}/>)}</div>);}
+
+// ── Chat Bubble ────────────────────────────────────────────
+function Bubble({msg,isLatest,C,t,onFollowup}){const isUser=msg.role==="user";const [fb,setFb]=useState(null);return(<div style={{display:"flex",gap:10,flexDirection:isUser?"row-reverse":"row",marginBottom:20}}><div style={{width:34,height:34,borderRadius:"50%",flexShrink:0,background:isUser?C.indigo:C.light,display:"flex",alignItems:"center",justifyContent:"center",fontSize:isUser?11:16,fontWeight:800,color:isUser?"#fff":C.indigo}}>{isUser?"ME":<BotIcon/>}</div><div style={{maxWidth:"74%",display:"flex",flexDirection:"column",alignItems:isUser?"flex-end":"flex-start"}}>{!isUser&&msg.sentiment==="stressed"&&<div style={{fontSize:11,color:"#92400E",marginBottom:5,background:"#FEF3C7",padding:"3px 12px",borderRadius:20,border:"1px solid #FDE68A"}}>{t.stressMsg}</div>}<div style={{padding:"12px 16px",borderRadius:isUser?"18px 4px 18px 18px":"4px 18px 18px 18px",background:isUser?C.indigo:C.msgBg,color:isUser?"#fff":C.text,fontSize:14,lineHeight:1.7,boxShadow:"0 2px 10px rgba(0,0,0,0.08)",border:isUser?"none":`1px solid ${C.border}`}}>{msg.content==="typing"?<TypingDots C={C}/>:isLatest&&!isUser?<StreamingText text={msg.content}/>:<span style={{whiteSpace:"pre-wrap"}}>{msg.content}</span>}</div>{msg.sources?.length>0&&<div style={{marginTop:4,display:"flex",flexWrap:"wrap",gap:4}}>{msg.sources.map((src,i)=><span key={i} style={{fontSize:10,padding:"2px 8px",borderRadius:20,background:C.light,color:C.violet,fontWeight:600}}>{src}</span>)}</div>}{!isUser&&msg.followups?.length>0&&<div style={{marginTop:8,display:"flex",flexWrap:"wrap",gap:6}}>{msg.followups.map((fq,i)=><span key={i} onClick={()=>onFollowup(fq)} style={{fontSize:11,padding:"5px 10px",borderRadius:20,background:C.light,color:C.indigo,cursor:"pointer",border:`1px solid ${C.border}`,fontWeight:600}} onMouseEnter={e=>e.currentTarget.style.background=C.indigo+"22"} onMouseLeave={e=>e.currentTarget.style.background=C.light}>{fq}</span>)}</div>}{!isUser&&msg.content!=="typing"&&<div style={{display:"flex",alignItems:"center",gap:6,marginTop:5}}><span style={{fontSize:10,color:C.muted}}>{new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span><button onClick={()=>setFb("up")} style={{background:fb==="up"?"#D1FAE5":"transparent",border:"none",cursor:"pointer",padding:"2px 6px",borderRadius:6,color:fb==="up"?"#059669":C.muted,display:"flex",alignItems:"center",gap:3}}><ThumbUp/>{fb==="up"&&<span style={{fontSize:10}}>{t.feedbackThanks}</span>}</button><button onClick={()=>setFb("down")} style={{background:fb==="down"?"#FEE2E2":"transparent",border:"none",cursor:"pointer",padding:"2px 6px",borderRadius:6,color:fb==="down"?"#EF4444":C.muted}}><ThumbDown/></button></div>}</div></div>);}
+
+// ═══════════════════════════════════════════════════════════
+// ── LOGIN SCREEN ──────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+function LoginScreen({onLogin,darkMode,setDarkMode}){
+  const [selectedRole,setSelectedRole]=useState(null);
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [showPass,setShowPass]=useState(false);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+  const [animIn,setAnimIn]=useState(false);
+  const C=THEMES[darkMode?"dark":"light"];
+
+  useEffect(()=>{setTimeout(()=>setAnimIn(true),50);},[]);
+
+  const handleRoleSelect=(role)=>{
+    setSelectedRole(role); setError("");
+    if(role==="student"){setEmail("student@uniduna.hu");setPassword("student123");}
+    if(role==="staff")  {setEmail("staff@uniduna.hu");  setPassword("staff123");}
+    if(role==="admin")  {setEmail("admin@uniduna.hu");   setPassword("admin123");}
+  };
+
+  const handleLogin=async()=>{
+    if(!email||!password){setError("Please enter your email and password.");return;}
+    setLoading(true);setError("");
+    try{
+      const {data,error:dbErr}=await supabase
+        .from("users")
+        .select("*")
+        .eq("email",email.toLowerCase().trim())
+        .eq("password",password)
+        .eq("role",selectedRole)
+        .single();
+      if(dbErr||!data){setError("Invalid credentials or wrong portal selected.");setLoading(false);return;}
+      if(data.active===false){setError("Your account is deactivated. Contact the admin.");setLoading(false);return;}
+      onLogin(data);
+    }catch(e){setError("Connection error. Check your Supabase configuration in .env");}
+    setLoading(false);
+  };
+
+  const bgGrad=darkMode
+    ?"linear-gradient(135deg,#0F0D2E 0%,#1E1B4B 60%,#0F172A 100%)"
+    :"linear-gradient(135deg,#EDE9FE 0%,#E0E7FF 50%,#F1F5F9 100%)";
+
+  return(
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:bgGrad,fontFamily:"'Segoe UI',system-ui,sans-serif",padding:20,position:"relative",overflow:"hidden"}}>
+      {/* Decorative orbs */}
+      {[{top:"8%",left:"10%",s:350,c:"rgba(79,70,229,0.07)"},{top:"65%",left:"72%",s:450,c:"rgba(124,58,237,0.05)"},{top:"45%",left:"45%",s:250,c:"rgba(8,145,178,0.04)"}].map((o,i)=>(
+        <div key={i} style={{position:"absolute",top:o.top,left:o.left,width:o.s,height:o.s,borderRadius:"50%",background:o.c,transform:"translate(-50%,-50%)",animation:`orb ${6+i*2}s ease-in-out infinite`,pointerEvents:"none"}}/>
+      ))}
+
+      <div style={{width:"100%",maxWidth:460,opacity:animIn?1:0,transform:animIn?"translateY(0)":"translateY(24px)",transition:"all 0.5s cubic-bezier(.22,1,.36,1)",position:"relative",zIndex:1}}>
+
+        {/* Logo */}
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{width:68,height:68,borderRadius:22,background:"linear-gradient(135deg,#4F46E5,#7C3AED)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,margin:"0 auto 14px",boxShadow:"0 12px 30px rgba(79,70,229,0.38)"}}>🎓</div>
+          <h1 style={{fontSize:28,fontWeight:900,color:C.text,margin:0,letterSpacing:"-0.8px"}}>UniAdvisor AI</h1>
+          <p style={{color:C.muted,fontSize:12,marginTop:5,fontWeight:500}}>Dunaújváros Egyetem · Academic Intelligence Platform</p>
+          <button onClick={()=>setDarkMode(!darkMode)} style={{marginTop:8,background:"transparent",border:`1px solid ${C.border}`,borderRadius:20,padding:"3px 11px",fontSize:11,color:C.muted,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5}}>
+            {darkMode?<SunIcon/>:<MoonIcon/>}{darkMode?" Light":" Dark"}
+          </button>
+        </div>
+
+        {/* Card */}
+        <div style={{background:C.white,borderRadius:22,boxShadow:darkMode?"0 24px 64px rgba(0,0,0,0.5)":"0 24px 64px rgba(79,70,229,0.13)",border:`1px solid ${C.border}`,overflow:"hidden"}}>
+
+          {!selectedRole?(
+            // Role picker
+            <div style={{padding:28}}>
+              <div style={{textAlign:"center",marginBottom:22}}>
+                <div style={{fontSize:15,fontWeight:800,color:C.text}}>Choose your portal</div>
+                <div style={{fontSize:12,color:C.muted,marginTop:3}}>Each role has a tailored experience</div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {Object.entries(ROLE_CONFIG).map(([role,cfg])=>(
+                  <button key={role} onClick={()=>handleRoleSelect(role)} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 18px",borderRadius:14,border:`2px solid ${C.border}`,background:C.bg,cursor:"pointer",textAlign:"left",transition:"all 0.18s"}}
+                    onMouseEnter={e=>{e.currentTarget.style.borderColor=cfg.badge;e.currentTarget.style.background=cfg.badge+"0f";e.currentTarget.style.transform="translateX(5px)";}}
+                    onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.background=C.bg;e.currentTarget.style.transform="";}}
+                  >
+                    <div style={{width:46,height:46,borderRadius:13,background:cfg.gradient,display:"flex",alignItems:"center",justifyContent:"center",fontSize:21,flexShrink:0,boxShadow:`0 4px 14px ${cfg.badge}30`}}>{cfg.icon}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:14,fontWeight:800,color:C.text}}>{cfg.label}</div>
+                      <div style={{fontSize:11,color:C.muted,marginTop:2}}>{cfg.desc}</div>
+                    </div>
+                    <div style={{color:C.muted,fontSize:20,fontWeight:300}}>›</div>
+                  </button>
+                ))}
+              </div>
+              {/* Demo credentials */}
+              <div style={{marginTop:20,padding:"12px 14px",background:C.bg,borderRadius:12,border:`1px solid ${C.border}`}}>
+                <div style={{fontSize:10,fontWeight:800,color:C.muted,marginBottom:7,textTransform:"uppercase",letterSpacing:"0.6px"}}>🔑 Sample Login Credentials</div>
+                {[["🎓 Student","student@uniduna.hu","student123"],["👩‍🏫 Staff","staff@uniduna.hu","staff123"],["⚙️ Admin","admin@uniduna.hu","admin123"]].map(([role,em,pw])=>(
+                  <div key={role} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5,fontSize:11}}>
+                    <span style={{color:C.text,fontWeight:700,minWidth:80}}>{role}</span>
+                    <span style={{color:C.muted}}>{em}</span>
+                    <span style={{color:C.muted,marginLeft:"auto",background:C.border,padding:"1px 6px",borderRadius:4,fontFamily:"monospace"}}>{pw}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ):(
+            // Login form
+            <div>
+              <div style={{background:ROLE_CONFIG[selectedRole].gradient,padding:"18px 24px",display:"flex",alignItems:"center",gap:12}}>
+                <div style={{fontSize:26}}>{ROLE_CONFIG[selectedRole].icon}</div>
+                <div>
+                  <div style={{color:"#fff",fontWeight:800,fontSize:16}}>{ROLE_CONFIG[selectedRole].label}</div>
+                  <div style={{color:"rgba(255,255,255,0.68)",fontSize:11}}>{ROLE_CONFIG[selectedRole].desc}</div>
+                </div>
+              </div>
+              <div style={{padding:"22px 24px"}}>
+                {error&&<div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"9px 13px",fontSize:12,color:"#DC2626",marginBottom:14,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>⚠️ {error}</div>}
+                <div style={{marginBottom:13}}>
+                  <label style={{fontSize:10,fontWeight:800,color:C.muted,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.6px"}}>Email Address</label>
+                  <input type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+                    style={{width:"100%",padding:"10px 13px",border:`1.5px solid ${C.border}`,borderRadius:10,fontSize:13,background:C.bg,color:C.text,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}
+                    onFocus={e=>e.target.style.borderColor=ROLE_CONFIG[selectedRole].badge}
+                    onBlur={e=>e.target.style.borderColor=C.border}
+                    placeholder="your.email@uniduna.hu"
+                  />
+                </div>
+                <div style={{marginBottom:18}}>
+                  <label style={{fontSize:10,fontWeight:800,color:C.muted,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.6px"}}>Password</label>
+                  <div style={{position:"relative"}}>
+                    <input type={showPass?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+                      style={{width:"100%",padding:"10px 40px 10px 13px",border:`1.5px solid ${C.border}`,borderRadius:10,fontSize:13,background:C.bg,color:C.text,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}
+                      onFocus={e=>e.target.style.borderColor=ROLE_CONFIG[selectedRole].badge}
+                      onBlur={e=>e.target.style.borderColor=C.border}
+                      placeholder="••••••••"
+                    />
+                    <button onClick={()=>setShowPass(!showPass)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:C.muted,display:"flex",alignItems:"center"}}>{showPass?<EyeOffIcon/>:<EyeIcon/>}</button>
+                  </div>
+                </div>
+                <button onClick={handleLogin} disabled={loading} style={{width:"100%",padding:"12px 0",borderRadius:12,border:"none",background:loading?"#C7D2FE":ROLE_CONFIG[selectedRole].gradient,color:"#fff",fontSize:14,fontWeight:800,cursor:loading?"not-allowed":"pointer",boxShadow:loading?"none":`0 5px 16px ${ROLE_CONFIG[selectedRole].badge}40`,transition:"all 0.18s",letterSpacing:"0.3px"}}>
+                  {loading?"Signing in…":"Sign In →"}
+                </button>
+                <button onClick={()=>setSelectedRole(null)} style={{width:"100%",padding:"8px 0",borderRadius:10,border:`1px solid ${C.border}`,background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",marginTop:8}}>
+                  ← Back to portal selection
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+        <div style={{textAlign:"center",marginTop:14,fontSize:11,color:C.muted}}>Powered by Groq LLaMA3 · ChromaDB · Supabase</div>
+      </div>
+      <style>{`@keyframes orb{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-54%) scale(1.06)}}`}</style>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// ── ADMIN PANEL MODAL ─────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+function AdminPanel({onClose,C,t}){
+  const [tab,setTab]=useState(0);
+  const [stats,setStats]=useState(null);
+  const [docs,setDocs]=useState([]);
+  const [anns,setAnns]=useState([]);
+  const [faq,setFaq]=useState([]);
+  const [alerts,setAlerts]=useState([]);
+  const [annText,setAnnText]=useState("");
+  const [annType,setAnnType]=useState("info");
+  const [uploading,setUploading]=useState(false);
+  const [uploadMsg,setUploadMsg]=useState("");
+  const [transFile,setTransFile]=useState(null);
+  const [transLang,setTransLang]=useState("en");
+  const [translating,setTranslating]=useState(false);
+  const [transResult,setTransResult]=useState(null);
+  const fileRef=useRef();const transRef=useRef();
+
+  const safeFetch=(url,cb)=>fetch(url).then(r=>r.ok?r.json():null).then(d=>{if(d)cb(d);}).catch(()=>{});
+  useEffect(()=>{
+    safeFetch(`${API}/stats`,d=>setStats(d));
+    safeFetch(`${API}/documents`,d=>setDocs(d.documents||[]));
+    safeFetch(`${API}/announcements`,d=>setAnns(d.announcements||[]));
+    safeFetch(`${API}/faq`,d=>setFaq(d.faq||[]));
+    safeFetch(`${API}/expiry-alerts`,d=>setAlerts(d.alerts||[]));
+  },[]);
+
+  const handleUpload=async(e)=>{const file=e.target.files[0];if(!file)return;setUploading(true);setUploadMsg("");const form=new FormData();form.append("file",file);try{const res=await fetch(`${API}/upload`,{method:"POST",body:form});const data=await res.json();setUploadMsg(res.ok?data.message:`Error: ${data.detail}`);if(res.ok)setDocs(prev=>[...prev,{name:file.name,uploaded_at:new Date().toISOString(),chunks:data.chunks}]);}catch{setUploadMsg(t.noServerMsg);}setUploading(false);};
+  const postAnn=async()=>{if(!annText.trim())return;try{const res=await fetch(`${API}/announcements`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:annText,type:annType})});const data=await res.json();setAnns(prev=>[...prev,data.announcement]);setAnnText("");}catch{}};
+  const deleteAnn=async(id)=>{try{await fetch(`${API}/announcements/${id}`,{method:"DELETE"});setAnns(prev=>prev.filter(a=>a.id!==id));}catch{}};
+  const runTranslate=async()=>{if(!transFile)return;setTranslating(true);setTransResult(null);const form=new FormData();form.append("file",transFile);form.append("target_language",transLang);try{const res=await fetch(`${API}/translate?target_language=${transLang}`,{method:"POST",body:form});const data=await res.json();setTransResult(data);}catch{setTransResult({error:"Translation failed."});}setTranslating(false);};
+
+  const annC={info:{bg:"#EFF6FF",border:"#BFDBFE",dot:"#3B82F6"},warning:{bg:"#FFFBEB",border:"#FDE68A",dot:"#F59E0B"},urgent:{bg:"#FEF2F2",border:"#FECACA",dot:"#EF4444"}};
+  const tabS=(i)=>({padding:"8px 13px",borderRadius:"8px 8px 0 0",fontSize:12,fontWeight:700,cursor:"pointer",border:"none",background:tab===i?C.white:"transparent",color:tab===i?C.violet:C.muted,borderBottom:tab===i?`2px solid ${C.violet}`:"2px solid transparent"});
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}} onClick={onClose}>
+      <div style={{background:C.bg,borderRadius:18,width:"min(95vw,700px)",maxHeight:"90vh",overflow:"hidden",boxShadow:"0 24px 70px rgba(0,0,0,0.35)",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+        <div style={{background:C.navy,padding:"16px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+          <div><div style={{color:"#fff",fontWeight:800,fontSize:16}}>⚙️ {t.adminTitle}</div><div style={{color:"#A78BFA",fontSize:11}}>{t.adminSub}</div></div>
+          <button onClick={onClose} style={{background:"transparent",border:"none",color:"#A78BFA",fontSize:24,cursor:"pointer",lineHeight:1}}>×</button>
+        </div>
+        <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"0 16px",display:"flex",gap:2,flexShrink:0,overflowX:"auto"}}>
+          {t.tabs.map((label,i)=>(
+            <button key={i} onClick={()=>setTab(i)} style={tabS(i)}>
+              {label}{i===3&&alerts.length>0&&<span style={{marginLeft:4,background:"#EF4444",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"inline-flex",alignItems:"center",justifyContent:"center"}}>{alerts.length}</span>}
+            </button>
+          ))}
+        </div>
+        <div style={{padding:20,overflowY:"auto",flex:1}}>
+          {/* Overview */}
+          {tab===0&&<div style={{display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{fontWeight:700,color:C.navy,fontSize:13}}>{t.statsTitle}</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+              {[{l:t.questions,v:stats?.total_questions||0,c:C.indigo},{l:t.chunks,v:stats?.indexed_chunks||0,c:"#0891B2"},{l:t.cached,v:stats?.cached_answers||0,c:"#7C3AED"},{l:t.satisfaction,v:"--",c:C.green}].map(s=>(
+                <div key={s.l} style={{background:C.white,borderRadius:12,padding:"14px 16px",border:`1px solid ${C.border}`}}><div style={{fontSize:22,fontWeight:800,color:s.c}}>{s.v}</div><div style={{fontSize:11,color:C.muted,marginTop:2}}>{s.l}</div></div>
+              ))}
+            </div>
+            {stats?.questions_by_major&&Object.keys(stats.questions_by_major).length>0&&<div style={{background:C.white,borderRadius:12,padding:16,border:`1px solid ${C.border}`}}><div style={{fontWeight:700,fontSize:12,color:C.navy,marginBottom:12}}>Questions by Major</div><BarChart data={stats.questions_by_major} color={C.indigo} height={80}/></div>}
+            {stats?.recent_questions?.length>0&&<div style={{background:C.white,borderRadius:12,padding:16,border:`1px solid ${C.border}`}}><div style={{fontWeight:700,fontSize:12,color:C.navy,marginBottom:10}}>{t.recentQ}</div>{stats.recent_questions.map((q,i)=><div key={i} style={{fontSize:12,padding:"6px 10px",background:C.bg,borderRadius:6,marginBottom:4,borderLeft:`3px solid ${C.indigo}`,color:C.text}}>{q}</div>)}</div>}
+          </div>}
+          {/* Announcements */}
+          {tab===1&&<div style={{display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{fontWeight:700,color:C.navy,fontSize:13}}>{t.annTitle}</div>
+            <div style={{background:C.white,borderRadius:12,padding:16,border:`1px solid ${C.border}`}}>
+              <div style={{display:"flex",gap:8,marginBottom:10}}>
+                {["info","warning","urgent"].map(type=><button key={type} onClick={()=>setAnnType(type)} style={{flex:1,padding:"6px 0",borderRadius:8,fontSize:11,fontWeight:700,background:annType===type?C.violet:"transparent",border:`1px solid ${annType===type?C.violet:C.border}`,color:annType===type?"#fff":C.muted,cursor:"pointer"}}>{type==="info"?"ℹ️ Info":type==="warning"?"⚠️ Warn":"🚨 Urgent"}</button>)}
+              </div>
+              <textarea value={annText} onChange={e=>setAnnText(e.target.value)} placeholder={t.annPlaceholder} rows={3} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px",fontSize:13,fontFamily:"inherit",color:C.text,background:C.bg,outline:"none",resize:"none",boxSizing:"border-box"}}/>
+              <button onClick={postAnn} disabled={!annText.trim()} style={{marginTop:8,width:"100%",background:annText.trim()?C.violet:"#C7D2FE",border:"none",color:"#fff",borderRadius:8,padding:"10px 0",fontSize:13,fontWeight:700,cursor:annText.trim()?"pointer":"not-allowed"}}>{t.annPost}</button>
+            </div>
+            {anns.length===0?<div style={{textAlign:"center",color:C.muted,fontSize:13,padding:"20px 0"}}>{t.annNone}</div>:anns.map(ann=>{const s=annC[ann.type]||annC.info;return(<div key={ann.id} style={{background:s.bg,border:`1px solid ${s.border}`,borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"flex-start",gap:10,marginBottom:8}}><div style={{width:8,height:8,borderRadius:"50%",background:s.dot,marginTop:5,flexShrink:0}}/><div style={{flex:1}}><div style={{fontSize:13,color:C.text,fontWeight:600}}>{ann.text}</div><div style={{fontSize:10,color:C.muted,marginTop:3}}>{new Date(ann.created_at).toLocaleString()}</div></div><button onClick={()=>deleteAnn(ann.id)} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:11,flexShrink:0}}>{t.annDelete}</button></div>);})}
+          </div>}
+          {/* FAQ */}
+          {tab===2&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div><div style={{fontWeight:700,color:C.navy,fontSize:13}}>{t.faqTitle}</div><div style={{fontSize:11,color:C.muted,marginTop:2}}>{t.faqSub}</div></div>
+            {faq.length===0?<div style={{textAlign:"center",color:C.muted,fontSize:13,padding:"30px 0"}}>{t.faqNone}</div>:faq.map((item,i)=><div key={i} style={{background:C.white,borderRadius:12,padding:16,border:`1px solid ${C.border}`}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><span style={{fontSize:11,fontWeight:700,color:C.violet,background:C.light,padding:"2px 8px",borderRadius:20}}>{item.topic}</span><span style={{fontSize:10,color:C.muted}}>{t.faqAsked(item.count)}</span></div><div style={{fontSize:13,color:C.text,fontWeight:600}}>{item.question}</div></div>)}
+          </div>}
+          {/* Documents */}
+          {tab===3&&<div style={{display:"flex",flexDirection:"column",gap:14}}>
+            {alerts.length>0&&<div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:12,padding:16}}><div style={{fontWeight:700,color:"#DC2626",fontSize:13,marginBottom:10}}>{t.expiryTitle} ({alerts.length})</div>{alerts.map((a,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #FECACA"}}><div style={{fontSize:12,color:"#7F1D1D",fontWeight:600}}>{a.filename}</div><div style={{fontSize:11,color:"#EF4444",fontWeight:700}}>{t.expiryDays(a.days_old)}</div></div>)}</div>}
+            {alerts.length===0&&<div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:12,padding:12,fontSize:12,color:"#166534",fontWeight:600}}>{t.expiryNone}</div>}
+            <div style={{fontWeight:700,color:C.navy,fontSize:13}}>{t.docsUpload}</div>
+            <div style={{border:`2px dashed ${C.border}`,borderRadius:12,padding:24,textAlign:"center",cursor:"pointer",background:C.white}} onClick={()=>fileRef.current?.click()} onMouseEnter={e=>e.currentTarget.style.borderColor=C.violet} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+              <div style={{fontSize:28,marginBottom:8}}>📁</div>
+              <div style={{color:C.violet,fontWeight:700,fontSize:13}}>{t.docsClick}</div>
+              <div style={{color:C.muted,fontSize:11,marginTop:4}}>{t.docsSub}</div>
+              <input ref={fileRef} type="file" accept=".pdf,.txt,.docx" style={{display:"none"}} onChange={handleUpload}/>
+            </div>
+            {uploading&&<div style={{textAlign:"center",color:C.violet,fontSize:12}}>{t.uploading}</div>}
+            {uploadMsg&&<div style={{textAlign:"center",fontSize:12,color:uploadMsg.includes("Error")?"#EF4444":C.green}}>{uploadMsg}</div>}
+            {docs.length>0&&<div><div style={{fontWeight:700,color:C.navy,fontSize:13,marginBottom:8}}>{t.docsTitle} ({docs.length})</div>{docs.map((doc,i)=>{const name=typeof doc==="string"?doc:doc.name;const info=typeof doc==="object"?doc:{};return(<div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:C.white,borderRadius:8,marginBottom:4,border:`1px solid ${C.border}`}}><div style={{display:"flex",alignItems:"center",gap:8}}><DocIcon/><div><div style={{fontSize:12,fontWeight:600,color:C.text}}>{name}</div>{info.uploaded_at&&<div style={{fontSize:10,color:C.muted}}>{new Date(info.uploaded_at).toLocaleDateString()} · {info.chunks||0} chunks</div>}</div></div></div>);})}</div>}
+          </div>}
+          {/* Translate */}
+          {tab===4&&<div style={{display:"flex",flexDirection:"column",gap:14}}>
+            <div><div style={{fontWeight:700,color:C.navy,fontSize:13}}>{t.transTitle}</div><div style={{fontSize:11,color:C.muted,marginTop:2}}>{t.transSub}</div></div>
+            <div style={{border:`2px dashed ${C.border}`,borderRadius:12,padding:24,textAlign:"center",cursor:"pointer",background:C.white}} onClick={()=>transRef.current?.click()} onMouseEnter={e=>e.currentTarget.style.borderColor=C.violet} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+              <div style={{fontSize:28,marginBottom:8}}>🌍</div>
+              <div style={{color:C.violet,fontWeight:700,fontSize:13}}>{transFile?transFile.name:t.transClick}</div>
+              <input ref={transRef} type="file" accept=".pdf,.txt,.docx" style={{display:"none"}} onChange={e=>setTransFile(e.target.files[0])}/>
+            </div>
+            <div><div style={{fontSize:12,fontWeight:700,color:C.navy,marginBottom:6}}>{t.transLang}</div><div style={{display:"flex",gap:8}}>{[["en","English"],["hu","Magyar"]].map(([code,label])=><button key={code} onClick={()=>setTransLang(code)} style={{flex:1,padding:"8px 0",borderRadius:8,fontSize:12,fontWeight:700,background:transLang===code?C.violet:"transparent",border:`1px solid ${transLang===code?C.violet:C.border}`,color:transLang===code?"#fff":C.muted,cursor:"pointer"}}>{label}</button>)}</div></div>
+            <button onClick={runTranslate} disabled={!transFile||translating} style={{background:transFile&&!translating?C.violet:"#C7D2FE",border:"none",color:"#fff",borderRadius:10,padding:"12px 0",fontSize:13,fontWeight:700,cursor:transFile&&!translating?"pointer":"not-allowed"}}>{translating?t.transRunning:t.transBtn}</button>
+            {transResult&&!transResult.error&&<div style={{background:C.white,borderRadius:12,border:`1px solid ${C.border}`,padding:16}}><div style={{fontWeight:700,fontSize:13,color:C.navy,marginBottom:8}}>{t.transResult}</div><div style={{fontSize:12,color:C.text,lineHeight:1.6,maxHeight:200,overflowY:"auto",background:C.bg,padding:12,borderRadius:8,whiteSpace:"pre-wrap"}}>{transResult.translated}</div><button onClick={()=>navigator.clipboard.writeText(transResult.translated)} style={{marginTop:10,background:C.light,border:"none",color:C.violet,borderRadius:8,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer"}}>{t.transCopy}</button></div>}
+            {transResult?.error&&<div style={{color:"#EF4444",fontSize:12,textAlign:"center"}}>{transResult.error}</div>}
+          </div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Announcement Banner ───────────────────────────────────
+function AnnouncementBanner({C}){
+  const [anns,setAnns]=useState([]);
+  const [dismissed,setDismissed]=useState([]);
+  const [failed,setFailed]=useState(false);
+  useEffect(()=>{
+    if(failed)return;
+    const doFetch=()=>{fetch(`${API}/announcements`).then(r=>{if(!r.ok){if(r.status===404)setFailed(true);return null;}return r.json();}).then(d=>{if(d)setAnns(d.announcements||[]);}).catch(()=>{});};
+    doFetch();
+    const iv=setInterval(()=>{if(!failed)doFetch();},30000);
+    return()=>clearInterval(iv);
+  },[failed]);
+  const visible=anns.filter(a=>!dismissed.includes(a.id));
+  if(visible.length===0||failed)return null;
+  const colors={info:{bg:"#EFF6FF",border:"#3B82F6",text:"#1E40AF"},warning:{bg:"#FFFBEB",border:"#F59E0B",text:"#92400E"},urgent:{bg:"#FEF2F2",border:"#EF4444",text:"#991B1B"}};
+  return(<div style={{display:"flex",flexDirection:"column",gap:4,padding:"0 24px 8px"}}>{visible.map(ann=>{const s=colors[ann.type]||colors.info;return(<div key={ann.id} style={{background:s.bg,border:`1px solid ${s.border}`,borderRadius:8,padding:"8px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}><span style={{fontSize:12,color:s.text,fontWeight:600}}>{ann.type==="info"?"ℹ️":ann.type==="warning"?"⚠️":"🚨"} {ann.text}</span><button onClick={()=>setDismissed(prev=>[...prev,ann.id])} style={{background:"transparent",border:"none",color:s.text,cursor:"pointer",fontSize:14,padding:"0 4px"}}>×</button></div>);})}</div>);
+}
+
+function exportChat(messages,studentName,t){const lines=messages.filter(m=>m.content!=="typing").map(m=>`[${m.role==="user"?studentName:"UniAdvisor AI"}]\n${m.content}\n`).join("\n---\n\n");const blob=new Blob([`UniAdvisor AI\n${studentName}\n${new Date().toLocaleString()}\n\n${"=".repeat(50)}\n\n${lines}`],{type:"text/plain"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`${t.exportFilename}_${new Date().toISOString().slice(0,10)}.txt`;a.click();}
+
+// ═══════════════════════════════════════════════════════════
+// ── STUDENT / ADMIN CHAT APP ──────────────────────────────
+// ═══════════════════════════════════════════════════════════
+function ChatApp({user,onLogout,darkMode,setDarkMode}){
+  const [messages,setMessages]=useState([]);
+  const [input,setInput]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [showAdmin,setShowAdmin]=useState(false);
+  const [lang,setLang]=useState("en");
+  const [listening,setListening]=useState(false);
+  const [showProfile,setShowProfile]=useState(false);
+  const [latestIdx,setLatestIdx]=useState(-1);
+  const chatRef=useRef();const recogRef=useRef(null);
+
+  const isAdmin=user.role==="admin";
+  const C=THEMES[darkMode?"dark":"light"];
+  const t={...T[lang],lang};
+  const studentName=user.full_name||"Student";
+  const studentMajor=user.major||"Computer Science";
+  const studentYear=user.year_of_study||"Year 1";
+  const roleAccent=isAdmin?"#7C3AED":C.indigo;
+  const roleGrad=isAdmin?"linear-gradient(135deg,#7C3AED,#4F46E5)":"linear-gradient(135deg,#4F46E5,#6366F1)";
+
+  useEffect(()=>{if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight;},[messages]);
+
+  const startListening=()=>{const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){alert("Voice input not supported. Try Chrome.");return;}const recog=new SR();recog.lang=lang==="hu"?"hu-HU":"en-US";recog.interimResults=false;recog.onresult=e=>{setInput(e.results[0][0].transcript);setListening(false);};recog.onerror=()=>setListening(false);recog.onend=()=>setListening(false);recog.start();recogRef.current=recog;setListening(true);};
+
+  const sendMessage=async(text)=>{
+    const question=(text||input).trim();
+    if(!question||loading)return;
+    setInput("");
+    const sentiment=detectSentiment(question);
+    setMessages(prev=>[...prev,{role:"user",content:question,sentiment}]);
+    setLoading(true);
+    setMessages(prev=>[...prev,{role:"assistant",content:"typing"}]);
+    const langNote=lang==="hu"?"Answer entirely in Hungarian.":"Answer in English.";
+    try{
+      const res=await fetch(`${API}/chat`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:`${question}\n\n[${langNote}]`,student_name:studentName,student_year:studentYear,student_major:studentMajor,history:messages.filter(m=>m.content!=="typing").slice(-4)})});
+      const data=await res.json();
+      const followups=generateFollowups(data.answer,t);
+      setMessages(prev=>{const next=prev.filter(m=>m.content!=="typing");setLatestIdx(next.length);return[...next,{role:"assistant",content:data.answer,sources:data.sources,sentiment,followups}];});
+    }catch{setMessages(prev=>[...prev.filter(m=>m.content!=="typing"),{role:"assistant",content:t.serverError}]);}
+    setLoading(false);
+  };
+
+  const handleKey=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}};
+  const showWelcome=messages.length===0;
+
+  return(
+    <div style={{display:"flex",height:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif",background:C.bg,color:C.text,transition:"background .3s,color .3s"}}>
+      {/* SIDEBAR */}
+      <aside style={{width:245,background:C.navy,display:"flex",flexDirection:"column",padding:"20px 14px",gap:4,flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+          <div style={{width:38,height:38,background:roleGrad,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{isAdmin?"⚙️":"🎓"}</div>
+          <div><div style={{color:"#fff",fontWeight:800,fontSize:15}}>{t.appName}</div><div style={{color:C.accent,fontSize:10}}>{t.university}</div></div>
+        </div>
+        {/* Role badge */}
+        <div style={{background:isAdmin?"rgba(167,139,250,0.12)":"rgba(99,102,241,0.12)",border:`1px solid ${isAdmin?"rgba(167,139,250,0.25)":"rgba(99,102,241,0.25)"}`,borderRadius:8,padding:"4px 10px",marginBottom:10,display:"flex",alignItems:"center",gap:6}}>
+          <div style={{width:6,height:6,borderRadius:"50%",background:isAdmin?"#A78BFA":"#818CF8"}}/>
+          <span style={{color:isAdmin?"#A78BFA":"#818CF8",fontSize:10,fontWeight:700}}>{isAdmin?"Admin Access":"Student Access"}</span>
+        </div>
+        <button onClick={()=>{setMessages([]);setLatestIdx(-1);}} style={{display:"flex",alignItems:"center",gap:8,background:roleAccent,border:"none",color:"#fff",borderRadius:10,padding:"10px 14px",fontSize:13,fontWeight:700,cursor:"pointer",marginBottom:14,width:"100%"}}>{t.newChat}</button>
+        {t.nav.map(item=>(
+          <div key={item.label} onClick={()=>sendMessage(t.navQuery(item.label))} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 10px",borderRadius:8,fontSize:12,color:C.sidebarText,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.08)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>{item.icon} {item.label}</div>
+        ))}
+        <div style={{flex:1}}/>
+        <div style={{marginBottom:10}}>
+          <div style={{fontSize:10,color:C.accent,marginBottom:6,fontWeight:600}}>{t.language}</div>
+          <div style={{display:"flex",gap:6}}>
+            {[["en","English"],["hu","Magyar"]].map(([code,label])=><button key={code} onClick={()=>setLang(code)} style={{flex:1,padding:"6px 0",borderRadius:8,fontSize:11,fontWeight:700,background:lang===code?roleAccent:"rgba(255,255,255,0.08)",border:"none",color:"#fff",cursor:"pointer"}}>{label}</button>)}
+          </div>
+        </div>
+        <button onClick={()=>setDarkMode(!darkMode)} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",color:C.sidebarText,borderRadius:10,padding:"9px 12px",fontSize:12,cursor:"pointer",marginBottom:6}}>
+          {darkMode?<SunIcon/>:<MoonIcon/>}{darkMode?` ${t.lightMode}`:` ${t.darkMode}`}
+        </button>
+        {isAdmin&&(
+          <button onClick={()=>setShowAdmin(true)} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(167,139,250,0.12)",border:"1px solid rgba(167,139,250,0.25)",color:"#A78BFA",borderRadius:10,padding:"9px 12px",fontSize:12,cursor:"pointer",marginBottom:6}}>
+            <ChartIcon/> {t.adminPanel}
+          </button>
+        )}
+        <div style={{borderTop:"1px solid rgba(255,255,255,0.1)",paddingTop:14}}>
+          <div onClick={()=>setShowProfile(!showProfile)} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+            <div style={{width:34,height:34,borderRadius:"50%",background:roleGrad,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:"#fff",flexShrink:0}}>
+              {studentName.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{color:"#fff",fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{studentName}</div>
+              <div style={{color:C.accent,fontSize:10}}>{studentMajor} · {studentYear}</div>
+            </div>
+          </div>
+          {showProfile&&(
+            <div style={{marginTop:10,padding:"10px 12px",background:"rgba(255,255,255,0.05)",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)"}}>
+              <div style={{fontSize:11,color:C.accent,marginBottom:4,wordBreak:"break-all"}}>{user.email}</div>
+              <div style={{fontSize:11,color:C.sidebarText,marginBottom:4}}>Role: <b style={{color:"#fff",textTransform:"capitalize"}}>{user.role}</b></div>
+              {user.student_id&&<div style={{fontSize:11,color:C.sidebarText,marginBottom:8}}>Student ID: <b style={{color:"#fff"}}>{user.student_id}</b></div>}
+              <button onClick={onLogout} style={{display:"flex",alignItems:"center",gap:6,background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",color:"#FCA5A5",borderRadius:8,padding:"6px 10px",fontSize:11,cursor:"pointer",width:"100%"}}>
+                <LogoutIcon/> Sign Out
+              </button>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      {/* MAIN */}
+      <main style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"13px 24px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div><div style={{fontWeight:800,fontSize:15,color:C.text}}>{t.topbarTitle}</div><div style={{fontSize:11,color:C.muted}}>{t.topbarSub} · {lang==="hu"?"Magyar":"English"}</div></div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {messages.length>0&&<button onClick={()=>exportChat(messages,studentName,t)} style={{display:"flex",alignItems:"center",gap:5,background:C.bg,border:`1px solid ${C.border}`,color:C.muted,borderRadius:8,padding:"5px 10px",fontSize:11,cursor:"pointer"}}><DownloadIcon/> {t.export}</button>}
+            <span style={{background:"#F0FDF4",color:"#16A34A",fontSize:11,fontWeight:700,padding:"5px 12px",borderRadius:20,border:"1px solid #BBF7D0",display:"flex",alignItems:"center",gap:5}}><span style={{width:7,height:7,borderRadius:"50%",background:"#22C55E",display:"inline-block"}}/>{t.online}</span>
+          </div>
+        </div>
+        <AnnouncementBanner C={C}/>
+        <div ref={chatRef} style={{flex:1,overflowY:"auto",padding:"20px 28px 12px"}}>
+          {showWelcome&&(
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center",padding:"20px 0 32px"}}>
+              <div style={{fontSize:52,marginBottom:14}}>{isAdmin?"⚙️":"🎓"}</div>
+              <h2 style={{fontSize:22,fontWeight:800,margin:"0 0 8px",color:C.text}}>{t.welcomeHi(studentName)}</h2>
+              <p style={{color:C.muted,fontSize:14,lineHeight:1.65,maxWidth:420,margin:"0 0 28px"}}>{t.welcomeSub}</p>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,maxWidth:520}}>
+                {t.suggestions.map(s=>(
+                  <div key={s.q} onClick={()=>sendMessage(s.q)} style={{background:C.white,border:`1.5px solid ${C.border}`,borderRadius:14,padding:16,textAlign:"left",cursor:"pointer",transition:"all .2s"}}
+                    onMouseEnter={e=>{e.currentTarget.style.borderColor=roleAccent;e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow=`0 6px 20px ${roleAccent}1A`;}}
+                    onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="";}}
+                  >
+                    <div style={{fontSize:22,marginBottom:6}}>{s.icon}</div>
+                    <div style={{fontWeight:800,fontSize:13,marginBottom:3,color:C.text}}>{s.title}</div>
+                    <div style={{color:C.muted,fontSize:11}}>{s.q}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {messages.map((msg,i)=><Bubble key={i} msg={msg} isLatest={i===latestIdx} C={C} t={t} onFollowup={fq=>sendMessage(fq)}/>)}
+        </div>
+        <div style={{background:C.white,borderTop:`1px solid ${C.border}`,padding:"14px 24px 16px"}}>
+          <div style={{display:"flex",alignItems:"flex-end",gap:8,background:C.inputBg,border:`1.5px solid ${C.border}`,borderRadius:14,padding:"10px 12px"}}>
+            <textarea value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey} rows={1} placeholder={t.inputPlaceholder} style={{flex:1,border:"none",background:"transparent",resize:"none",outline:"none",fontSize:14,fontFamily:"inherit",color:C.text,maxHeight:120,lineHeight:1.5}}/>
+            <button onClick={listening?()=>{recogRef.current?.stop();setListening(false);}:startListening} style={{width:34,height:34,borderRadius:10,flexShrink:0,background:listening?"#EF4444":C.bg,border:`1px solid ${listening?"#EF4444":C.border}`,color:listening?"#fff":C.muted,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><MicIcon/></button>
+            <button onClick={()=>sendMessage()} disabled={loading||!input.trim()} style={{width:34,height:34,borderRadius:10,flexShrink:0,background:(!loading&&input.trim())?roleAccent:"#C7D2FE",border:"none",color:"#fff",cursor:(!loading&&input.trim())?"pointer":"not-allowed",display:"flex",alignItems:"center",justifyContent:"center"}}><SendIcon/></button>
+          </div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:9}}>
+            {t.quickTags.map(tag=>(
+              <span key={tag} onClick={()=>sendMessage(tag)} style={{background:C.bg,border:`1px solid ${C.border}`,color:C.muted,fontSize:11,padding:"4px 10px",borderRadius:20,cursor:"pointer"}} onMouseEnter={e=>{e.currentTarget.style.background=C.light;e.currentTarget.style.color=roleAccent;}} onMouseLeave={e=>{e.currentTarget.style.background=C.bg;e.currentTarget.style.color=C.muted;}}>{tag}</span>
+            ))}
+          </div>
+        </div>
+      </main>
+      {showAdmin&&<AdminPanel onClose={()=>setShowAdmin(false)} C={C} t={t}/>}
+      <style>{`
+        @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-8px)}}
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body{overflow:hidden;}
+        ::-webkit-scrollbar{width:5px;}
+        ::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:10px;}
+      `}</style>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// ── STAFF PORTAL  (Clean Corporate Light Design) ─────────
+// ═══════════════════════════════════════════════════════════
+
+// ── Palette ────────────────────────────────────────────────────
+const S = {
+  white:   "#FFFFFF",
+  snow:    "#F8FAFC",
+  ice:     "#F1F5F9",
+  border:  "#E2E8F0",
+  border2: "#CBD5E1",
+  text:    "#0F172A",
+  text2:   "#334155",
+  muted:   "#64748B",
+  teal:    "#0D9488",
+  teal2:   "#0F766E",
+  tealBg:  "#F0FDFA",
+  tealBdr: "#99F6E4",
+  blue:    "#0EA5E9",
+  blueBg:  "#F0F9FF",
+  amber:   "#F59E0B",
+  amberBg: "#FFFBEB",
+  red:     "#EF4444",
+  redBg:   "#FEF2F2",
+  green:   "#10B981",
+  greenBg: "#F0FDF4",
+};
+
+// ── Icons (inline SVG) ─────────────────────────────────────────
+const SIcon = {
+  logout:   ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
+  bell:     ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
+  users:    ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+  send:     ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
+  trash:    ()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>,
+  chat:     ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
+  check:    ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>,
+  info:     ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
+  warning:  ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+  urgent:   ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
+  activity: ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
+};
+
+// ── Ann type config ────────────────────────────────────────────
+const ANN_TYPES = {
+  info:    { color: S.blue,  bg: S.blueBg,  border: "#BAE6FD", label: "Information", Icon: SIcon.info },
+  warning: { color: S.amber, bg: S.amberBg, border: "#FDE68A", label: "Warning",     Icon: SIcon.warning },
+  urgent:  { color: S.red,   bg: S.redBg,   border: "#FECACA", label: "Urgent",      Icon: SIcon.urgent },
+};
+
+// ── Fake recent activity (replace with real API data later) ────
+const SAMPLE_ACTIVITY = [
+  { student: "Anna Kovács",   major: "CS Engineering",    q: "What are the prerequisites for Advanced Algorithms?",         time: "2 min ago" },
+  { student: "John Doe",      major: "Mechanical Eng.",   q: "When is the deadline to register for next semester?",         time: "8 min ago" },
+  { student: "Liu Wei",       major: "Material Eng.",     q: "How do I apply for the Erasmus scholarship?",                 time: "15 min ago" },
+  { student: "Mária Szabó",   major: "Business Admin.",   q: "What is the tuition fee for international students?",         time: "22 min ago" },
+  { student: "Sarah Jones",   major: "Media Science",     q: "Can I take an elective outside my department?",               time: "41 min ago" },
+  { student: "Omar Hassan",   major: "CS Engineering",    q: "Where do I submit my internship placement documentation?",    time: "1 hr ago" },
+  { student: "Elena Popescu", major: "Mechanical Eng.",   q: "Is there a student counselling service on campus?",           time: "2 hrs ago" },
+];
+
+function StaffPortal({ user, onLogout }) {
+  const [section, setSection]       = useState("announcements");
+  const [anns, setAnns]             = useState([]);
+  const [annText, setAnnText]       = useState("");
+  const [annType, setAnnType]       = useState("info");
+  const [posting, setPosting]       = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
+  const [charCount, setCharCount]   = useState(0);
+  const [searchQ, setSearchQ]       = useState("");
+  const [filterMajor, setFilterMajor] = useState("All");
+  const [msgDraft, setMsgDraft]     = useState("");
+  const [msgTo, setMsgTo]           = useState("");
+  const [msgSent, setMsgSent]       = useState([]);
+  const textareaRef = useRef();
+  const MAX_CHARS = 500;
+
+  const activity = SAMPLE_ACTIVITY;
+
+  useEffect(() => {
+    fetch(`${API}/announcements`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setAnns(d.announcements || []); })
+      .catch(() => {});
+  }, []);
+
+  const handleTextChange = (e) => {
+    const val = e.target.value;
+    if (val.length <= MAX_CHARS) { setAnnText(val); setCharCount(val.length); }
+  };
+
+  const postAnn = async () => {
+    if (!annText.trim() || posting) return;
+    setPosting(true);
+    try {
+      const res  = await fetch(`${API}/announcements`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: annText.trim(), type: annType }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAnns(prev => [data.announcement, ...prev]);
+        setAnnText(""); setCharCount(0);
+        setSuccessMsg("Announcement published successfully.");
+        setTimeout(() => setSuccessMsg(""), 4000);
+      }
+    } catch {}
+    setPosting(false);
+  };
+
+  const deleteAnn = async (id) => {
+    try {
+      await fetch(`${API}/announcements/${id}`, { method: "DELETE" });
+      setAnns(prev => prev.filter(a => a.id !== id));
+    } catch {}
+  };
+
+  const sendMsg = () => {
+    if (!msgDraft.trim() || !msgTo.trim()) return;
+    setMsgSent(prev => [...prev, { to: msgTo, text: msgDraft, time: new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}), type: annType }]);
+    setMsgDraft(""); setMsgTo("");
+    setSuccessMsg("Message sent!"); setTimeout(() => setSuccessMsg(""), 3000);
+  };
+
+  const initials = (name = "") => name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  const activeAnns = anns.filter(a => a.active !== false);
+
+  const majors = ["All", ...new Set(activity.map(a => a.major))];
+  const filteredActivity = activity.filter(a =>
+    (filterMajor === "All" || a.major === filterMajor) &&
+    (searchQ === "" || a.student.toLowerCase().includes(searchQ.toLowerCase()) || a.q.toLowerCase().includes(searchQ.toLowerCase()))
+  );
+
+  const NAV = [
+    { id: "announcements", icon: SIcon.bell,     label: "Announcements",   badge: activeAnns.length || null },
+    { id: "activity",      icon: SIcon.activity, label: "Student Activity", badge: null },
+    { id: "directory",     icon: SIcon.users,    label: "Student Directory",badge: null },
+    { id: "messages",      icon: SIcon.chat,     label: "Message Log",      badge: msgSent.length || null },
+  ];
+
+  const PAGE_TITLES = {
+    announcements: { title: "Announcements",    sub: "Broadcast messages to all students" },
+    activity:      { title: "Student Activity", sub: "Live feed of student questions" },
+    directory:     { title: "Student Directory",sub: "Browse registered students" },
+    messages:      { title: "Message Log",      sub: "Direct messages you have sent" },
+  };
+
+  return (
+    <div style={{ display: "flex", height: "100vh", fontFamily: "'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif", background: S.snow, color: S.text, overflow: "hidden" }}>
+
+      {/* ── SIDEBAR ── */}
+      <aside style={{ width: 220, background: S.white, borderRight: `1px solid ${S.border}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
+        <div style={{ padding: "24px 20px 20px", borderBottom: `1px solid ${S.border}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${S.teal}, ${S.teal2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, boxShadow: `0 4px 12px ${S.teal}33` }}>👩‍🏫</div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: S.text, letterSpacing: "-0.2px" }}>Staff Portal</div>
+              <div style={{ fontSize: 10, color: S.muted }}>UniAdvisor AI</div>
+            </div>
+          </div>
+        </div>
+
+        <nav style={{ padding: "12px 10px", flex: 1 }}>
+          {NAV.map(({ id, icon: Ic, label, badge }) => {
+            const active = section === id;
+            return (
+              <div key={id} onClick={() => setSection(id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 8, marginBottom: 2, background: active ? S.tealBg : "transparent", color: active ? S.teal : S.muted, cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, transition: "all 0.15s", position: "relative" }}
+                onMouseEnter={e => { if (!active) e.currentTarget.style.background = S.ice; }}
+                onMouseLeave={e => { if (!active) e.currentTarget.style.background = "transparent"; }}
+              >
+                {active && <div style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)", width: 3, height: 16, background: S.teal, borderRadius: "0 3px 3px 0" }} />}
+                <Ic /><span style={{ flex: 1 }}>{label}</span>
+                {badge ? <span style={{ background: S.teal, color: "#fff", borderRadius: 10, padding: "1px 6px", fontSize: 9, fontWeight: 700 }}>{badge}</span> : null}
+              </div>
+            );
+          })}
+        </nav>
+
+        <div style={{ padding: "16px 20px", borderTop: `1px solid ${S.border}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: `linear-gradient(135deg, ${S.teal}, ${S.teal2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(user.full_name)}</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: S.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.full_name || "Staff"}</div>
+              <div style={{ fontSize: 10, color: S.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.department || "Staff Member"}</div>
+            </div>
+          </div>
+          <button onClick={onLogout} style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "7px 10px", borderRadius: 8, border: `1px solid ${S.border}`, background: "transparent", color: S.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
+            onMouseEnter={e => { e.currentTarget.style.background = S.redBg; e.currentTarget.style.color = S.red; e.currentTarget.style.borderColor = "#FECACA"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = S.muted; e.currentTarget.style.borderColor = S.border; }}
+          ><SIcon.logout /> Sign Out</button>
+        </div>
+      </aside>
+
+      {/* ── MAIN ── */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+        {/* Top bar */}
+        <header style={{ background: S.white, borderBottom: `1px solid ${S.border}`, padding: "0 32px", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+          <div>
+            <h1 style={{ fontSize: 16, fontWeight: 700, color: S.text, margin: 0, letterSpacing: "-0.3px" }}>{PAGE_TITLES[section].title}</h1>
+            <p style={{ fontSize: 11, color: S.muted, margin: 0 }}>{PAGE_TITLES[section].sub}</p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, background: S.greenBg, border: "1px solid #A7F3D0", borderRadius: 20, padding: "4px 12px" }}>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: S.green, animation: "pulse 2s infinite" }} />
+              <span style={{ fontSize: 11, fontWeight: 600, color: "#065F46" }}>System Online</span>
+            </div>
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: `linear-gradient(135deg, ${S.teal}, ${S.teal2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff" }}>{initials(user.full_name)}</div>
+          </div>
+        </header>
+
+        {/* ── PAGE: ANNOUNCEMENTS ── */}
+        {section === "announcements" && (
+          <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
+            {/* Left: composer */}
+            <div style={{ flex: "0 0 52%", overflowY: "auto", padding: "28px 24px 28px 32px", borderRight: `1px solid ${S.border}` }}>
+              <div style={{ background: S.white, borderRadius: 16, border: `1px solid ${S.border}`, overflow: "hidden", marginBottom: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                <div style={{ padding: "16px 20px", borderBottom: `1px solid ${S.border}`, display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, background: S.tealBg, border: `1px solid ${S.tealBdr}`, display: "flex", alignItems: "center", justifyContent: "center", color: S.teal }}><SIcon.bell /></div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: S.text }}>New Announcement</div>
+                    <div style={{ fontSize: 11, color: S.muted }}>Visible to all students immediately</div>
+                  </div>
+                </div>
+                <div style={{ padding: "18px 20px" }}>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                    {Object.entries(ANN_TYPES).map(([type, cfg]) => (
+                      <button key={type} onClick={() => setAnnType(type)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", borderRadius: 8, border: `1.5px solid ${annType === type ? cfg.color : S.border}`, background: annType === type ? cfg.bg : S.white, color: annType === type ? cfg.color : S.muted, fontSize: 11, fontWeight: 700, cursor: "pointer", transition: "all 0.15s", fontFamily: "inherit" }}>
+                        <cfg.Icon />{cfg.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ position: "relative" }}>
+                    <textarea ref={textareaRef} value={annText} onChange={handleTextChange} placeholder="Write your message to students. Be clear and concise..." rows={5}
+                      style={{ width: "100%", padding: "12px 14px", border: `1.5px solid ${annText ? S.teal : S.border}`, borderRadius: 10, fontSize: 13, fontFamily: "inherit", color: S.text, background: S.snow, outline: "none", resize: "none", boxSizing: "border-box", lineHeight: 1.6, transition: "border-color 0.15s" }}
+                      onFocus={e => e.target.style.borderColor = S.teal}
+                      onBlur={e => e.target.style.borderColor = annText ? S.teal : S.border}
+                    />
+                    <div style={{ position: "absolute", bottom: 10, right: 12, fontSize: 10, color: charCount > MAX_CHARS * 0.9 ? S.amber : S.muted }}>{charCount}/{MAX_CHARS}</div>
+                  </div>
+                  {successMsg && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 10, padding: "8px 12px", background: S.greenBg, border: "1px solid #A7F3D0", borderRadius: 8, fontSize: 12, color: "#065F46", fontWeight: 600 }}>
+                      <SIcon.check />{successMsg}
+                    </div>
+                  )}
+                  <button onClick={postAnn} disabled={!annText.trim() || posting} style={{ marginTop: 12, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "11px 0", borderRadius: 10, border: "none", background: annText.trim() && !posting ? `linear-gradient(135deg, ${S.teal}, ${S.teal2})` : S.border, color: annText.trim() && !posting ? "#fff" : S.muted, fontSize: 13, fontWeight: 700, cursor: annText.trim() && !posting ? "pointer" : "not-allowed", boxShadow: annText.trim() && !posting ? `0 4px 14px ${S.teal}33` : "none", transition: "all 0.18s", fontFamily: "inherit" }}>
+                    <SIcon.send />{posting ? "Publishing…" : "Publish Announcement"}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: S.text }}>Active Announcements</div>
+                <div style={{ fontSize: 11, color: S.muted, background: S.ice, border: `1px solid ${S.border}`, padding: "2px 9px", borderRadius: 20 }}>{activeAnns.length} published</div>
+              </div>
+              {activeAnns.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "40px 20px", background: S.white, borderRadius: 14, border: `1px dashed ${S.border2}` }}>
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>📭</div>
+                  <div style={{ fontSize: 13, color: S.muted }}>No active announcements. Publish one above.</div>
+                </div>
+              ) : activeAnns.map(ann => {
+                const cfg = ANN_TYPES[ann.type] || ANN_TYPES.info;
+                return (
+                  <div key={ann.id} style={{ background: S.white, border: `1px solid ${S.border}`, borderRadius: 12, padding: "14px 16px", display: "flex", gap: 12, marginBottom: 10, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: cfg.bg, border: `1px solid ${cfg.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: cfg.color, flexShrink: 0 }}><cfg.Icon /></div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: cfg.color, textTransform: "uppercase", letterSpacing: "0.5px" }}>{cfg.label}</span>
+                        <span style={{ fontSize: 10, color: S.muted }}>{new Date(ann.created_at).toLocaleString()}</span>
+                      </div>
+                      <div style={{ fontSize: 13, color: S.text, lineHeight: 1.55 }}>{ann.text}</div>
+                    </div>
+                    <button onClick={() => deleteAnn(ann.id)} style={{ alignSelf: "flex-start", padding: "5px 8px", borderRadius: 7, border: `1px solid ${S.border}`, background: "transparent", color: S.muted, cursor: "pointer", display: "flex", alignItems: "center" }}
+                      onMouseEnter={e => { e.currentTarget.style.background = S.redBg; e.currentTarget.style.color = S.red; e.currentTarget.style.borderColor = "#FECACA"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = S.muted; e.currentTarget.style.borderColor = S.border; }}
+                    ><SIcon.trash /></button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Right: activity feed */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "28px 32px 28px 24px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
+                <SIcon.activity />
+                <div style={{ fontSize: 13, fontWeight: 700, color: S.text }}>Recent Student Activity</div>
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: S.muted }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: S.green }} />Live
+                </div>
+              </div>
+              {activity.map((item, i) => (
+                <div key={i} style={{ display: "flex", gap: 12, padding: "12px 14px", borderRadius: 10, transition: "background 0.15s" }}
+                  onMouseEnter={e => e.currentTarget.style.background = S.ice}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                >
+                  <div style={{ width: 34, height: 34, borderRadius: "50%", background: `hsl(${(i*47)%360},60%,90%)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: `hsl(${(i*47)%360},50%,35%)`, flexShrink: 0 }}>
+                    {item.student.split(" ").map(w=>w[0]).join("").slice(0,2)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: S.text }}>{item.student}</span>
+                      <span style={{ fontSize: 10, color: S.muted, background: S.ice, padding: "1px 6px", borderRadius: 4 }}>{item.major}</span>
+                      <span style={{ fontSize: 10, color: S.muted, marginLeft: "auto", flexShrink: 0 }}>{item.time}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: S.text2, lineHeight: 1.45, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>"{item.q}"</div>
+                  </div>
+                </div>
+              ))}
+              <div style={{ marginTop: 24, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {[{label:"Questions Today",value:"47",icon:"💬",color:S.teal},{label:"Active Students",value:"12",icon:"👥",color:S.blue},{label:"Avg. Response",value:"1.3s",icon:"⚡",color:S.amber},{label:"Satisfaction",value:"94%",icon:"⭐",color:S.green}].map(card=>(
+                  <div key={card.label} style={{ background: S.white, border: `1px solid ${S.border}`, borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                    <div style={{ fontSize: 20, marginBottom: 6 }}>{card.icon}</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: card.color, letterSpacing: "-0.5px" }}>{card.value}</div>
+                    <div style={{ fontSize: 11, color: S.muted, marginTop: 2 }}>{card.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── PAGE: STUDENT ACTIVITY ── */}
+        {section === "activity" && (
+          <div style={{ flex: 1, overflowY: "auto", padding: "28px 32px" }}>
+            {/* Filters */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+              <div style={{ position: "relative", flex: 1, maxWidth: 320 }}>
+                <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search by student name or question…"
+                  style={{ width: "100%", padding: "9px 14px 9px 36px", border: `1.5px solid ${S.border}`, borderRadius: 10, fontSize: 13, fontFamily: "inherit", color: S.text, background: S.white, outline: "none", boxSizing: "border-box" }}
+                  onFocus={e=>e.target.style.borderColor=S.teal} onBlur={e=>e.target.style.borderColor=S.border}
+                />
+                <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: S.muted, fontSize: 13 }}>🔍</div>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {majors.map(m => (
+                  <button key={m} onClick={()=>setFilterMajor(m)} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${filterMajor===m?S.teal:S.border}`, background: filterMajor===m?S.tealBg:S.white, color: filterMajor===m?S.teal:S.muted, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>{m}</button>
+                ))}
+              </div>
+              <div style={{ marginLeft: "auto", fontSize: 12, color: S.muted, fontWeight: 600 }}>{filteredActivity.length} results</div>
+            </div>
+
+            {/* Table header */}
+            <div style={{ display: "grid", gridTemplateColumns: "180px 130px 1fr 90px", gap: 12, padding: "8px 14px", background: S.ice, borderRadius: 8, marginBottom: 8, fontSize: 11, fontWeight: 700, color: S.muted, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              <div>Student</div><div>Major</div><div>Question</div><div>Time</div>
+            </div>
+
+            {filteredActivity.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "60px 0", color: S.muted }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>🔍</div>
+                <div style={{ fontSize: 13 }}>No results found for your search.</div>
+              </div>
+            ) : filteredActivity.map((item, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "180px 130px 1fr 90px", gap: 12, padding: "12px 14px", background: S.white, borderRadius: 10, marginBottom: 6, border: `1px solid ${S.border}`, alignItems: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.03)", transition: "box-shadow 0.15s" }}
+                onMouseEnter={e=>e.currentTarget.style.boxShadow="0 3px 10px rgba(0,0,0,0.07)"}
+                onMouseLeave={e=>e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.03)"}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: "50%", background: `hsl(${(i*47)%360},60%,90%)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: `hsl(${(i*47)%360},50%,35%)`, flexShrink: 0 }}>
+                    {item.student.split(" ").map(w=>w[0]).join("").slice(0,2)}
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: S.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.student}</span>
+                </div>
+                <div style={{ fontSize: 11, color: S.muted, background: S.ice, padding: "2px 8px", borderRadius: 4, display: "inline-block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.major}</div>
+                <div style={{ fontSize: 12, color: S.text2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>"{item.q}"</div>
+                <div style={{ fontSize: 11, color: S.muted, textAlign: "right" }}>{item.time}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── PAGE: STUDENT DIRECTORY ── */}
+        {section === "directory" && (
+          <div style={{ flex: 1, overflowY: "auto", padding: "28px 32px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 }}>
+              {[
+                { name:"Anna Kovács",      major:"CS Engineering",        year:"Year 2", id:"STU-2024-001", email:"anna.kovacs@uniduna.hu",   active:true },
+                { name:"John Doe",         major:"Mechanical Engineering", year:"Year 1", id:"STU-2024-002", email:"john.doe@uniduna.hu",       active:true },
+                { name:"Mária Szabó",      major:"Business Administration",year:"Year 3", id:"STU-2024-003", email:"maria.szabo@uniduna.hu",    active:true },
+                { name:"Liu Wei",          major:"Material Engineering",   year:"Year 2", id:"STU-2024-004", email:"liu.wei@uniduna.hu",        active:true },
+                { name:"Sarah Jones",      major:"Media Science",          year:"Year 1", id:"STU-2024-005", email:"sarah.jones@uniduna.hu",    active:true },
+                { name:"Omar Hassan",      major:"CS Engineering",         year:"Year 3", id:"STU-2024-006", email:"omar.hassan@uniduna.hu",    active:true },
+                { name:"Elena Popescu",    major:"Mechanical Engineering", year:"Year 2", id:"STU-2024-007", email:"elena.popescu@uniduna.hu",  active:false },
+                { name:"Takeshi Yamamoto", major:"Business Administration",year:"Year 1", id:"STU-2024-008", email:"takeshi.y@uniduna.hu",      active:true },
+              ].map((s, i) => (
+                <div key={i} style={{ background: S.white, border: `1px solid ${S.border}`, borderRadius: 14, padding: "18px 16px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)", transition: "all 0.15s" }}
+                  onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 14px rgba(0,0,0,0.08)";e.currentTarget.style.transform="translateY(-1px)";}}
+                  onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 4px rgba(0,0,0,0.04)";e.currentTarget.style.transform="";}}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: `hsl(${(i*53)%360},55%,88%)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: `hsl(${(i*53)%360},45%,35%)`, flexShrink: 0 }}>
+                      {s.name.split(" ").map(w=>w[0]).join("").slice(0,2)}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: S.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
+                      <div style={{ fontSize: 10, color: S.muted }}>{s.id}</div>
+                    </div>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: s.active ? S.green : S.red, flexShrink: 0 }} />
+                  </div>
+                  <div style={{ fontSize: 11, color: S.text2, marginBottom: 4 }}>📚 {s.major}</div>
+                  <div style={{ fontSize: 11, color: S.text2, marginBottom: 4 }}>🎓 {s.year}</div>
+                  <div style={{ fontSize: 11, color: S.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>✉️ {s.email}</div>
+                  <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
+                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: s.active ? S.greenBg : S.redBg, color: s.active ? "#065F46" : S.red, fontWeight: 700, border: `1px solid ${s.active?"#A7F3D0":"#FECACA"}` }}>
+                      {s.active ? "Active" : "Inactive"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── PAGE: MESSAGE LOG ── */}
+        {section === "messages" && (
+          <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
+            {/* Compose panel */}
+            <div style={{ flex: "0 0 400px", borderRight: `1px solid ${S.border}`, padding: "24px", overflowY: "auto", background: S.white }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 16 }}>Compose Message</div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: S.muted, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.5px" }}>To (Student Name or Group)</label>
+                <input value={msgTo} onChange={e=>setMsgTo(e.target.value)} placeholder="e.g. Anna Kovács or All Year 2 Students"
+                  style={{ width: "100%", padding: "9px 12px", border: `1.5px solid ${S.border}`, borderRadius: 9, fontSize: 13, fontFamily: "inherit", color: S.text, background: S.snow, outline: "none", boxSizing: "border-box" }}
+                  onFocus={e=>e.target.style.borderColor=S.teal} onBlur={e=>e.target.style.borderColor=S.border}
+                />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: S.muted, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.5px" }}>Type</label>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {["info","warning","urgent"].map(t => (
+                    <button key={t} onClick={()=>setAnnType(t)} style={{ flex:1, padding:"6px 0", borderRadius:7, border:`1.5px solid ${annType===t?ANN_TYPES[t].color:S.border}`, background:annType===t?ANN_TYPES[t].bg:S.white, color:annType===t?ANN_TYPES[t].color:S.muted, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", textTransform:"capitalize" }}>{t}</button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: S.muted, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.5px" }}>Message</label>
+                <textarea value={msgDraft} onChange={e=>setMsgDraft(e.target.value)} placeholder="Type your message here…" rows={6}
+                  style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${S.border}`, borderRadius: 9, fontSize: 13, fontFamily: "inherit", color: S.text, background: S.snow, outline: "none", resize: "none", boxSizing: "border-box", lineHeight: 1.6 }}
+                  onFocus={e=>e.target.style.borderColor=S.teal} onBlur={e=>e.target.style.borderColor=S.border}
+                />
+              </div>
+              {successMsg && (
+                <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:10, padding:"8px 12px", background:S.greenBg, border:"1px solid #A7F3D0", borderRadius:8, fontSize:12, color:"#065F46", fontWeight:600 }}>
+                  <SIcon.check />{successMsg}
+                </div>
+              )}
+              <button onClick={sendMsg} disabled={!msgDraft.trim()||!msgTo.trim()} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:7, padding:"11px 0", borderRadius:10, border:"none", background:msgDraft.trim()&&msgTo.trim()?`linear-gradient(135deg,${S.teal},${S.teal2})`:S.border, color:msgDraft.trim()&&msgTo.trim()?"#fff":S.muted, fontSize:13, fontWeight:700, cursor:msgDraft.trim()&&msgTo.trim()?"pointer":"not-allowed", fontFamily:"inherit", transition:"all 0.15s" }}>
+                <SIcon.send /> Send Message
+              </button>
+            </div>
+
+            {/* Sent log */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 16 }}>Sent Messages ({msgSent.length})</div>
+              {msgSent.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "60px 0", color: S.muted }}>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>💬</div>
+                  <div style={{ fontSize: 13 }}>No messages sent yet. Compose one on the left.</div>
+                </div>
+              ) : [...msgSent].reverse().map((m, i) => {
+                const cfg = ANN_TYPES[m.type] || ANN_TYPES.info;
+                return (
+                  <div key={i} style={{ background: S.white, border: `1px solid ${S.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 10, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: cfg.color, background: cfg.bg, padding: "2px 8px", borderRadius: 4, textTransform: "uppercase" }}>{m.type}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: S.text }}>To: {m.to}</span>
+                      <span style={{ fontSize: 10, color: S.muted, marginLeft: "auto" }}>{m.time}</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: S.text2, lineHeight: 1.55 }}>{m.text}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { overflow: hidden; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: ${S.border2}; border-radius: 10px; }
+      `}</style>
+    </div>
+  );
+}
+
+// ── ADMIN PORTAL  (Dark Command-Center Design) ────────────
+// ═══════════════════════════════════════════════════════════
+
+// ── Dark palette ───────────────────────────────────────────────
+const D = {
+  bg:       "#070B14",
+  surface:  "#0D1321",
+  card:     "#111827",
+  card2:    "#1A2235",
+  border:   "#1E2D45",
+  border2:  "#243349",
+  text:     "#E2E8F0",
+  text2:    "#94A3B8",
+  muted:    "#4B5563",
+  purple:   "#8B5CF6",
+  purple2:  "#7C3AED",
+  purpleGl: "rgba(139,92,246,0.12)",
+  purpleBr: "rgba(139,92,246,0.25)",
+  violet:   "#A78BFA",
+  cyan:     "#22D3EE",
+  cyanGl:   "rgba(34,211,238,0.08)",
+  green:    "#10B981",
+  greenGl:  "rgba(16,185,129,0.1)",
+  amber:    "#F59E0B",
+  amberGl:  "rgba(245,158,11,0.1)",
+  red:      "#EF4444",
+  redGl:    "rgba(239,68,68,0.1)",
+  blue:     "#3B82F6",
+  blueGl:   "rgba(59,130,246,0.1)",
+};
+
+// ── Icons ──────────────────────────────────────────────────────
+const DIcon = {
+  dashboard: ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>,
+  bell:      ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
+  doc:       ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>,
+  faq:       ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+  translate: ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M5 8l6 6"/><path d="M4 14l6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="M22 22l-5-10-5 10"/><path d="M14 18h6"/></svg>,
+  logout:    ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
+  upload:    ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>,
+  trash:     ()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>,
+  send:      ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
+  copy:      ()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
+  chevron:   ()=><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>,
+  alert:     ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+};
+
+// ── Animated counter ───────────────────────────────────────────
+function AnimatedCounter({ target, duration = 1400, suffix = "" }) {
+  const [val, setVal] = useState(0);
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current || target === 0) return;
+    started.current = true;
+    const start = performance.now();
+    const tick = (now) => {
+      const p = Math.min((now - start) / duration, 1);
+      const ease = 1 - Math.pow(1 - p, 3);
+      setVal(Math.round(ease * target));
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, [target]);
+  return <span>{val.toLocaleString()}{suffix}</span>;
+}
+
+// ── Sparkline ──────────────────────────────────────────────────
+function Sparkline({ data, color, height = 36 }) {
+  if (!data || data.length < 2) return null;
+  const max = Math.max(...data, 1);
+  const w = 80, h = height;
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - (v / max) * h}`).join(" ");
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ overflow: "visible" }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      <polyline points={`0,${h} ${pts} ${w},${h}`} fill={color} fillOpacity="0.08" stroke="none" />
+    </svg>
+  );
+}
+
+// ── Donut chart ────────────────────────────────────────────────
+function Donut({ percent, color, size = 56 }) {
+  const r = 20, circ = 2 * Math.PI * r;
+  const dash = (percent / 100) * circ;
+  return (
+    <svg width={size} height={size} viewBox="0 0 44 44">
+      <circle cx="22" cy="22" r={r} fill="none" stroke={D.border2} strokeWidth="4" />
+      <circle cx="22" cy="22" r={r} fill="none" stroke={color} strokeWidth="4"
+        strokeDasharray={`${dash} ${circ}`} strokeDashoffset={circ / 4}
+        strokeLinecap="round" style={{ transition: "stroke-dasharray 1.2s cubic-bezier(.22,1,.36,1)" }} />
+      <text x="22" y="26" textAnchor="middle" fill={color} fontSize="9" fontWeight="700">{percent}%</text>
+    </svg>
+  );
+}
+
+// ── Horizontal bar ─────────────────────────────────────────────
+function HBar({ label, value, max, color }) {
+  const pct = max > 0 ? (value / max) * 100 : 0;
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+        <span style={{ fontSize: 11, color: D.text2 }}>{label}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: D.text }}>{value}</span>
+      </div>
+      <div style={{ height: 4, background: D.border2, borderRadius: 4, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 4, transition: "width 1s cubic-bezier(.22,1,.36,1)" }} />
+      </div>
+    </div>
+  );
+}
+
+// ── Main ───────────────────────────────────────────────────────
+function AdminPortal({ user, onLogout }) {
+  const [section, setSection]   = useState("dashboard");
+  const [stats, setStats]       = useState(null);
+  const [docs, setDocs]         = useState([]);
+  const [anns, setAnns]         = useState([]);
+  const [faq, setFaq]           = useState([]);
+  const [alerts, setAlerts]     = useState([]);
+  const [annText, setAnnText]   = useState("");
+  const [annType, setAnnType]   = useState("info");
+  const [posting, setPosting]   = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState("");
+  const [transFile, setTransFile] = useState(null);
+  const [transLang, setTransLang] = useState("en");
+  const [translating, setTranslating] = useState(false);
+  const [transResult, setTransResult] = useState(null);
+  const fileRef  = useRef();
+  const transRef = useRef();
+
+  const safeFetch = (url, cb) =>
+    fetch(url).then(r => r.ok ? r.json() : null).then(d => { if (d) cb(d); }).catch(() => {});
+
+  useEffect(() => {
+    safeFetch(`${API}/stats`,          d => setStats(d));
+    safeFetch(`${API}/documents`,      d => setDocs(d.documents || []));
+    safeFetch(`${API}/announcements`,  d => setAnns(d.announcements || []));
+    safeFetch(`${API}/faq`,            d => setFaq(d.faq || []));
+    safeFetch(`${API}/expiry-alerts`,  d => setAlerts(d.alerts || []));
+  }, []);
+
+  const postAnn = async () => {
+    if (!annText.trim() || posting) return;
+    setPosting(true);
+    try {
+      const res = await fetch(`${API}/announcements`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: annText, type: annType }) });
+      const data = await res.json();
+      if (res.ok) { setAnns(prev => [data.announcement, ...prev]); setAnnText(""); }
+    } catch {}
+    setPosting(false);
+  };
+
+  const deleteAnn = async (id) => {
+    try { await fetch(`${API}/announcements/${id}`, { method: "DELETE" }); setAnns(prev => prev.filter(a => a.id !== id)); } catch {}
+  };
+
+  const handleUpload = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    setUploading(true); setUploadMsg("");
+    const form = new FormData(); form.append("file", file);
+    try {
+      const res = await fetch(`${API}/upload`, { method: "POST", body: form });
+      const data = await res.json();
+      setUploadMsg(res.ok ? `✓ ${data.message}` : `✗ ${data.detail}`);
+      if (res.ok) setDocs(prev => [...prev, { name: file.name, uploaded_at: new Date().toISOString(), chunks: data.chunks }]);
+    } catch { setUploadMsg("✗ Connection failed."); }
+    setUploading(false);
+  };
+
+  const runTranslate = async () => {
+    if (!transFile || translating) return;
+    setTranslating(true); setTransResult(null);
+    const form = new FormData(); form.append("file", transFile); form.append("target_language", transLang);
+    try {
+      const res = await fetch(`${API}/translate?target_language=${transLang}`, { method: "POST", body: form });
+      setTransResult(await res.json());
+    } catch { setTransResult({ error: "Translation failed." }); }
+    setTranslating(false);
+  };
+
+  const initials = (name = "") => name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+
+  // Nav items
+  const NAV = [
+    { id: "dashboard",     icon: DIcon.dashboard, label: "Dashboard",      badge: null },
+    { id: "announcements", icon: DIcon.bell,      label: "Announcements",  badge: anns.filter(a=>a.active!==false).length || null },
+    { id: "documents",     icon: DIcon.doc,       label: "Documents",      badge: alerts.length || null },
+    { id: "faq",           icon: DIcon.faq,       label: "FAQ",            badge: null },
+    { id: "translate",     icon: DIcon.translate, label: "Translate",      badge: null },
+  ];
+
+  // Sample sparkline data
+  const sparkData = [3, 7, 5, 12, 9, 15, 11, 18, 14, 22, 17, 25];
+
+  const ANN_CFG = {
+    info:    { color: D.blue,   gl: D.blueGl,   label: "Information" },
+    warning: { color: D.amber,  gl: D.amberGl,  label: "Warning" },
+    urgent:  { color: D.red,    gl: D.redGl,    label: "Urgent" },
+  };
+
+  return (
+    <div style={{ display: "flex", height: "100vh", fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', monospace", background: D.bg, color: D.text, overflow: "hidden" }}>
+
+      {/* ── LEFT SIDEBAR ── */}
+      <aside style={{ width: 228, background: D.surface, borderRight: `1px solid ${D.border}`, display: "flex", flexDirection: "column", flexShrink: 0, position: "relative", overflow: "hidden" }}>
+        {/* Ambient glow top */}
+        <div style={{ position: "absolute", top: -60, left: -60, width: 180, height: 180, borderRadius: "50%", background: D.purpleGl, filter: "blur(40px)", pointerEvents: "none" }} />
+
+        {/* Brand */}
+        <div style={{ padding: "22px 20px 18px", borderBottom: `1px solid ${D.border}`, position: "relative" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 9, background: `linear-gradient(135deg, ${D.purple}, ${D.purple2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, boxShadow: `0 0 20px ${D.purple}44` }}>⚙️</div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: D.text, letterSpacing: "0.5px" }}>ADMIN PORTAL</div>
+              <div style={{ fontSize: 9, color: D.purple, letterSpacing: "1px", textTransform: "uppercase" }}>Command Center</div>
+            </div>
+          </div>
+          {/* System status */}
+          <div style={{ display: "flex", align: "center", gap: 6, background: D.greenGl, border: "1px solid rgba(16,185,129,0.2)", borderRadius: 6, padding: "5px 10px", fontSize: 10, color: D.green, letterSpacing: "0.5px" }}>
+            <div style={{ width: 5, height: 5, borderRadius: "50%", background: D.green, marginTop: 1, animation: "glow 2s infinite" }} />
+            &nbsp;SYSTEMS NOMINAL
+          </div>
+        </div>
+
+        {/* Nav */}
+        <nav style={{ padding: "12px 10px", flex: 1 }}>
+          <div style={{ fontSize: 9, color: D.muted, letterSpacing: "1.5px", padding: "0 10px", marginBottom: 8 }}>NAVIGATION</div>
+          {NAV.map(({ id, icon: Ic, label, badge }) => {
+            const active = section === id;
+            return (
+              <button key={id} onClick={() => setSection(id)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 12px", borderRadius: 8, marginBottom: 2, background: active ? D.purpleGl : "transparent", border: active ? `1px solid ${D.purpleBr}` : "1px solid transparent", color: active ? D.violet : D.text2, cursor: "pointer", fontSize: 12, fontFamily: "inherit", textAlign: "left", transition: "all 0.15s", position: "relative" }}
+                onMouseEnter={e => { if (!active) { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; e.currentTarget.style.color = D.text; } }}
+                onMouseLeave={e => { if (!active) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = D.text2; } }}
+              >
+                {active && <div style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)", width: 2.5, height: 16, background: D.purple, borderRadius: "0 2px 2px 0" }} />}
+                <Ic />
+                <span style={{ flex: 1 }}>{label}</span>
+                {badge ? <span style={{ background: D.red, color: "#fff", borderRadius: 10, padding: "1px 6px", fontSize: 9, fontWeight: 700 }}>{badge}</span> : active ? <DIcon.chevron /> : null}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* User */}
+        <div style={{ padding: "14px 16px", borderTop: `1px solid ${D.border}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
+            <div style={{ width: 30, height: 30, borderRadius: "50%", background: `linear-gradient(135deg, ${D.purple}, ${D.purple2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "#fff", flexShrink: 0, boxShadow: `0 0 10px ${D.purple}44` }}>
+              {initials(user.full_name)}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: D.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.full_name || "Admin"}</div>
+              <div style={{ fontSize: 9, color: D.purple, textTransform: "uppercase", letterSpacing: "0.5px" }}>Administrator</div>
+            </div>
+          </div>
+          <button onClick={onLogout} style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "7px 10px", borderRadius: 7, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 11, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}
+            onMouseEnter={e => { e.currentTarget.style.background = D.redGl; e.currentTarget.style.color = D.red; e.currentTarget.style.borderColor = "rgba(239,68,68,0.3)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = D.text2; e.currentTarget.style.borderColor = D.border; }}
+          >
+            <DIcon.logout /> SIGN OUT
+          </button>
+        </div>
+      </aside>
+
+      {/* ── MAIN PANEL ── */}
+      <main style={{ flex: 1, overflowY: "auto", position: "relative" }}>
+
+        {/* Top bar */}
+        <div style={{ position: "sticky", top: 0, zIndex: 10, background: `${D.bg}e0`, backdropFilter: "blur(12px)", borderBottom: `1px solid ${D.border}`, padding: "0 32px", height: 54, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 10, color: D.muted, letterSpacing: "1px" }}>ADMIN /</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: D.violet, letterSpacing: "0.5px", textTransform: "uppercase" }}>{section}</span>
+          </div>
+          <div style={{ fontSize: 10, color: D.muted, letterSpacing: "0.5px" }}>
+            {new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} · {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </div>
+        </div>
+
+        <div style={{ padding: "28px 32px" }}>
+
+          {/* ══ DASHBOARD ══════════════════════════════════════════ */}
+          {section === "dashboard" && (
+            <div>
+              <div style={{ marginBottom: 24 }}>
+                <h2 style={{ fontSize: 20, fontWeight: 700, color: D.text, margin: "0 0 4px", letterSpacing: "-0.5px" }}>System Overview</h2>
+                <p style={{ fontSize: 12, color: D.text2, margin: 0 }}>Real-time analytics — UniAdvisor AI platform</p>
+              </div>
+
+              {/* KPI row */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>
+                {[
+                  { label: "Total Questions",  val: stats?.total_questions || 0,    suffix: "",   color: D.purple, gl: D.purpleGl, spark: sparkData },
+                  { label: "Indexed Chunks",   val: stats?.indexed_chunks  || 0,    suffix: "",   color: D.cyan,   gl: D.cyanGl,   spark: sparkData.map(v=>v*3) },
+                  { label: "Cached Answers",   val: stats?.cached_answers  || 0,    suffix: "",   color: D.green,  gl: D.greenGl,  spark: sparkData.map(v=>v*0.7) },
+                  { label: "Satisfaction",     val: 94,                             suffix: "%",  color: D.amber,  gl: D.amberGl,  spark: sparkData.map(v=>70+v) },
+                ].map(kpi => (
+                  <div key={kpi.label} style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: "18px 20px", position: "relative", overflow: "hidden" }}>
+                    <div style={{ position: "absolute", top: 0, right: 0, width: 80, height: 80, borderRadius: "50%", background: kpi.gl, filter: "blur(20px)", pointerEvents: "none" }} />
+                    <div style={{ fontSize: 10, color: D.text2, letterSpacing: "0.8px", textTransform: "uppercase", marginBottom: 10 }}>{kpi.label}</div>
+                    <div style={{ fontSize: 28, fontWeight: 800, color: kpi.color, letterSpacing: "-1px", lineHeight: 1 }}>
+                      <AnimatedCounter target={kpi.val} suffix={kpi.suffix} />
+                    </div>
+                    <div style={{ marginTop: 12 }}>
+                      <Sparkline data={kpi.spark} color={kpi.color} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Second row */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 24 }}>
+
+                {/* Questions by major */}
+                <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: D.text, letterSpacing: "0.5px", marginBottom: 16 }}>QUESTIONS BY MAJOR</div>
+                  {stats?.questions_by_major && Object.keys(stats.questions_by_major).length > 0
+                    ? Object.entries(stats.questions_by_major).map(([major, count]) => (
+                        <HBar key={major} label={major.length > 18 ? major.slice(0, 18) + "…" : major} value={count} max={Math.max(...Object.values(stats.questions_by_major))} color={D.purple} />
+                      ))
+                    : <div style={{ fontSize: 11, color: D.muted, marginTop: 8 }}>No data yet. Start chatting!</div>}
+                </div>
+
+                {/* Questions by year */}
+                <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: D.text, letterSpacing: "0.5px", marginBottom: 16 }}>QUESTIONS BY YEAR</div>
+                  {stats?.questions_by_year && Object.keys(stats.questions_by_year).length > 0
+                    ? Object.entries(stats.questions_by_year).map(([yr, count]) => (
+                        <HBar key={yr} label={yr} value={count} max={Math.max(...Object.values(stats.questions_by_year))} color={D.cyan} />
+                      ))
+                    : <div style={{ fontSize: 11, color: D.muted, marginTop: 8 }}>No data yet.</div>}
+                </div>
+
+                {/* System health donuts */}
+                <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: D.text, letterSpacing: "0.5px", marginBottom: 16 }}>SYSTEM HEALTH</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {[
+                      { label: "AI Response Rate", pct: 98, color: D.green },
+                      { label: "Cache Hit Rate",   pct: stats?.cached_answers && stats?.total_questions ? Math.round((stats.cached_answers/stats.total_questions)*100) : 0, color: D.cyan },
+                      { label: "Uptime",           pct: 100, color: D.purple },
+                    ].map(item => (
+                      <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <Donut percent={item.pct} color={item.color} size={44} />
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: item.color }}>{item.pct}%</div>
+                          <div style={{ fontSize: 10, color: D.text2 }}>{item.label}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent questions */}
+              {stats?.recent_questions?.length > 0 && (
+                <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: D.text, letterSpacing: "0.5px", marginBottom: 14 }}>RECENT QUERIES</div>
+                  {stats.recent_questions.map((q, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: i < stats.recent_questions.length - 1 ? `1px solid ${D.border}` : "none" }}>
+                      <div style={{ width: 4, height: 4, borderRadius: "50%", background: D.purple, marginTop: 5, flexShrink: 0 }} />
+                      <div style={{ fontSize: 12, color: D.text2, lineHeight: 1.4 }}>{q}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══ ANNOUNCEMENTS ══════════════════════════════════════ */}
+          {section === "announcements" && (
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: D.text, margin: "0 0 20px", letterSpacing: "-0.3px" }}>Announcements</h2>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+                {/* Composer */}
+                <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: D.violet, letterSpacing: "0.8px", marginBottom: 16 }}>NEW ANNOUNCEMENT</div>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+                    {["info","warning","urgent"].map(type => {
+                      const cfg = ANN_CFG[type];
+                      return <button key={type} onClick={() => setAnnType(type)} style={{ flex: 1, padding: "7px 0", borderRadius: 7, border: `1px solid ${annType===type?cfg.color:D.border}`, background: annType===type?cfg.gl:"transparent", color: annType===type?cfg.color:D.text2, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", textTransform: "uppercase", letterSpacing: "0.5px", transition: "all 0.15s" }}>{type}</button>;
+                    })}
+                  </div>
+                  <textarea value={annText} onChange={e=>setAnnText(e.target.value)} placeholder="Enter announcement text..." rows={5}
+                    style={{ width: "100%", padding: "10px 12px", border: `1px solid ${annText?D.purple:D.border}`, borderRadius: 8, fontSize: 12, fontFamily: "inherit", color: D.text, background: D.card2, outline: "none", resize: "none", boxSizing: "border-box", lineHeight: 1.6, transition: "border-color 0.15s" }}
+                    onFocus={e=>e.target.style.borderColor=D.purple}
+                    onBlur={e=>e.target.style.borderColor=annText?D.purple:D.border}
+                  />
+                  <button onClick={postAnn} disabled={!annText.trim()||posting} style={{ marginTop: 10, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "10px 0", borderRadius: 8, border: "none", background: annText.trim()&&!posting?`linear-gradient(135deg, ${D.purple}, ${D.purple2})`:"rgba(255,255,255,0.05)", color: annText.trim()&&!posting?D.text:D.muted, fontSize: 12, fontWeight: 700, cursor: annText.trim()&&!posting?"pointer":"not-allowed", boxShadow: annText.trim()&&!posting?`0 0 20px ${D.purple}44`:"none", fontFamily: "inherit", transition: "all 0.18s" }}>
+                    <DIcon.send />{posting?"PUBLISHING…":"PUBLISH"}
+                  </button>
+                </div>
+                {/* List */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 420, overflowY: "auto" }}>
+                  {anns.filter(a=>a.active!==false).length === 0
+                    ? <div style={{ color: D.muted, fontSize: 12, textAlign: "center", padding: "40px 0" }}>No active announcements.</div>
+                    : anns.filter(a=>a.active!==false).map(ann => {
+                        const cfg = ANN_CFG[ann.type] || ANN_CFG.info;
+                        return (
+                          <div key={ann.id} style={{ background: D.card, border: `1px solid ${cfg.color}33`, borderRadius: 12, padding: "12px 14px", display: "flex", gap: 10 }}>
+                            <div style={{ width: 2.5, background: cfg.color, borderRadius: 2, flexShrink: 0 }} />
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 10, color: cfg.color, fontWeight: 700, letterSpacing: "0.5px", marginBottom: 4 }}>{cfg.label.toUpperCase()}</div>
+                              <div style={{ fontSize: 12, color: D.text, lineHeight: 1.5 }}>{ann.text}</div>
+                              <div style={{ fontSize: 10, color: D.muted, marginTop: 5 }}>{new Date(ann.created_at).toLocaleString()}</div>
+                            </div>
+                            <button onClick={() => deleteAnn(ann.id)} style={{ background: "transparent", border: "none", color: D.muted, cursor: "pointer", padding: "2px 4px", alignSelf: "flex-start" }}
+                              onMouseEnter={e=>e.currentTarget.style.color=D.red}
+                              onMouseLeave={e=>e.currentTarget.style.color=D.muted}
+                            ><DIcon.trash /></button>
+                          </div>
+                        );
+                      })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══ DOCUMENTS ══════════════════════════════════════════ */}
+          {section === "documents" && (
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: D.text, margin: "0 0 20px", letterSpacing: "-0.3px" }}>Knowledge Base Documents</h2>
+
+              {alerts.length > 0 && (
+                <div style={{ background: D.redGl, border: "1px solid rgba(239,68,68,0.3)", borderRadius: 12, padding: "12px 16px", marginBottom: 20, display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <DIcon.alert />
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: D.red, marginBottom: 6 }}>⚠ {alerts.length} document(s) need updating (90+ days old)</div>
+                    {alerts.map((a, i) => <div key={i} style={{ fontSize: 11, color: D.text2 }}>• {a.filename} — {a.days_old} days old</div>)}
+                  </div>
+                </div>
+              )}
+
+              {/* Upload zone */}
+              <div style={{ border: `2px dashed ${D.border2}`, borderRadius: 14, padding: "32px 24px", textAlign: "center", cursor: "pointer", marginBottom: 20, transition: "all 0.2s" }}
+                onClick={() => fileRef.current?.click()}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = D.purple; e.currentTarget.style.background = D.purpleGl; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = D.border2; e.currentTarget.style.background = "transparent"; }}
+              >
+                <div style={{ fontSize: 32, marginBottom: 10 }}>📁</div>
+                <div style={{ color: D.violet, fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Click to upload document</div>
+                <div style={{ color: D.muted, fontSize: 11 }}>PDF · TXT · DOCX — Course catalogs, policies, handbooks</div>
+                <input ref={fileRef} type="file" accept=".pdf,.txt,.docx" style={{ display: "none" }} onChange={handleUpload} />
+              </div>
+
+              {uploading && <div style={{ textAlign: "center", color: D.violet, fontSize: 12, marginBottom: 12, animation: "pulse 1.5s infinite" }}>Uploading and indexing…</div>}
+              {uploadMsg && <div style={{ textAlign: "center", fontSize: 12, color: uploadMsg.startsWith("✓") ? D.green : D.red, marginBottom: 14, fontWeight: 600 }}>{uploadMsg}</div>}
+
+              {/* Doc list */}
+              {docs.length > 0 && (
+                <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, overflow: "hidden" }}>
+                  <div style={{ padding: "12px 16px", borderBottom: `1px solid ${D.border}`, fontSize: 11, fontWeight: 700, color: D.text, letterSpacing: "0.5px" }}>INDEXED DOCUMENTS ({docs.length})</div>
+                  {docs.map((doc, i) => {
+                    const name = typeof doc === "string" ? doc : doc.name;
+                    const info = typeof doc === "object" ? doc : {};
+                    return (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: i < docs.length - 1 ? `1px solid ${D.border}` : "none" }}
+                        onMouseEnter={e=>e.currentTarget.style.background=D.card2}
+                        onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                      >
+                        <div style={{ width: 32, height: 32, borderRadius: 8, background: D.purpleGl, border: `1px solid ${D.purpleBr}`, display: "flex", alignItems: "center", justifyContent: "center", color: D.violet, flexShrink: 0 }}><DIcon.doc /></div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: D.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+                          {info.uploaded_at && <div style={{ fontSize: 10, color: D.muted, marginTop: 2 }}>{new Date(info.uploaded_at).toLocaleDateString()} · {info.chunks || 0} chunks indexed</div>}
+                        </div>
+                        <div style={{ fontSize: 10, color: D.green, background: D.greenGl, padding: "2px 8px", borderRadius: 4, fontWeight: 700 }}>ACTIVE</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {docs.length === 0 && !uploading && <div style={{ color: D.muted, fontSize: 12, textAlign: "center", padding: "20px 0" }}>No documents indexed yet.</div>}
+            </div>
+          )}
+
+          {/* ══ FAQ ════════════════════════════════════════════════ */}
+          {section === "faq" && (
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: D.text, margin: "0 0 6px", letterSpacing: "-0.3px" }}>Auto-Generated FAQ</h2>
+              <p style={{ fontSize: 12, color: D.text2, margin: "0 0 24px" }}>Derived from the most frequent student questions</p>
+              {faq.length === 0
+                ? <div style={{ color: D.muted, fontSize: 12, textAlign: "center", padding: "60px 0" }}>No questions recorded yet. Students need to start chatting!</div>
+                : <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {faq.map((item, i) => (
+                      <div key={i} style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 12, padding: "14px 18px", display: "flex", gap: 14, transition: "border-color 0.15s" }}
+                        onMouseEnter={e=>e.currentTarget.style.borderColor=D.purple}
+                        onMouseLeave={e=>e.currentTarget.style.borderColor=D.border}
+                      >
+                        <div style={{ fontSize: 20, fontWeight: 800, color: D.purple, opacity: 0.3, fontFamily: "serif", lineHeight: 1 }}>Q</div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: D.violet, background: D.purpleGl, border: `1px solid ${D.purpleBr}`, padding: "1px 8px", borderRadius: 4 }}>{item.topic}</span>
+                            <span style={{ fontSize: 10, color: D.muted }}>asked {item.count}× </span>
+                          </div>
+                          <div style={{ fontSize: 13, color: D.text, fontWeight: 500 }}>{item.question}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>}
+            </div>
+          )}
+
+          {/* ══ TRANSLATE ══════════════════════════════════════════ */}
+          {section === "translate" && (
+            <div style={{ maxWidth: 580 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: D.text, margin: "0 0 6px", letterSpacing: "-0.3px" }}>Document Translation</h2>
+              <p style={{ fontSize: 12, color: D.text2, margin: "0 0 24px" }}>Translate documents and optionally add to the knowledge base</p>
+
+              {/* Upload zone */}
+              <div style={{ border: `2px dashed ${D.border2}`, borderRadius: 14, padding: "28px 20px", textAlign: "center", cursor: "pointer", marginBottom: 16, transition: "all 0.2s" }}
+                onClick={() => transRef.current?.click()}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = D.cyan; e.currentTarget.style.background = D.cyanGl; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = D.border2; e.currentTarget.style.background = "transparent"; }}
+              >
+                <div style={{ fontSize: 28, marginBottom: 8 }}>🌍</div>
+                <div style={{ color: D.cyan, fontWeight: 700, fontSize: 13 }}>{transFile ? transFile.name : "Click to select document"}</div>
+                <div style={{ color: D.muted, fontSize: 11, marginTop: 4 }}>PDF · TXT · DOCX</div>
+                <input ref={transRef} type="file" accept=".pdf,.txt,.docx" style={{ display: "none" }} onChange={e => setTransFile(e.target.files[0])} />
+              </div>
+
+              {/* Language toggle */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: D.muted, letterSpacing: "1px", marginBottom: 8 }}>TARGET LANGUAGE</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {[["en","English"],["hu","Magyar"]].map(([code, label]) => (
+                    <button key={code} onClick={() => setTransLang(code)} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${transLang===code?D.cyan:D.border}`, background: transLang===code?D.cyanGl:"transparent", color: transLang===code?D.cyan:D.text2, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>{label}</button>
+                  ))}
+                </div>
+              </div>
+
+              <button onClick={runTranslate} disabled={!transFile || translating} style={{ width: "100%", padding: "11px 0", borderRadius: 10, border: "none", background: transFile&&!translating?`linear-gradient(135deg,${D.cyan},#0EA5E9)`:"rgba(255,255,255,0.05)", color: transFile&&!translating?D.bg:D.muted, fontSize: 12, fontWeight: 800, cursor: transFile&&!translating?"pointer":"not-allowed", boxShadow: transFile&&!translating?`0 0 20px ${D.cyan}33`:"none", fontFamily: "inherit", letterSpacing: "0.5px", transition: "all 0.18s" }}>
+                {translating ? "TRANSLATING…" : "TRANSLATE DOCUMENT"}
+              </button>
+
+              {transResult && !transResult.error && (
+                <div style={{ marginTop: 20, background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, overflow: "hidden" }}>
+                  <div style={{ padding: "10px 16px", borderBottom: `1px solid ${D.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: D.cyan, letterSpacing: "0.5px" }}>TRANSLATION RESULT</span>
+                    <button onClick={() => navigator.clipboard.writeText(transResult.translated)} style={{ display: "flex", alignItems: "center", gap: 5, background: "transparent", border: `1px solid ${D.border}`, color: D.text2, padding: "4px 10px", borderRadius: 6, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}><DIcon.copy /> COPY</button>
+                  </div>
+                  <div style={{ padding: 16, fontSize: 12, color: D.text, lineHeight: 1.7, maxHeight: 300, overflowY: "auto", whiteSpace: "pre-wrap" }}>{transResult.translated}</div>
+                </div>
+              )}
+              {transResult?.error && <div style={{ marginTop: 14, color: D.red, fontSize: 12, textAlign: "center" }}>{transResult.error}</div>}
+            </div>
+          )}
+
+        </div>
+      </main>
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+        @keyframes glow { 0%,100%{opacity:1;box-shadow:0 0 4px currentColor} 50%{opacity:0.5;box-shadow:none} }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { overflow: hidden; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: ${D.border2}; border-radius: 10px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+      `}</style>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// ── ROOT ──────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+export default function App(){
+  const [user,setUser]=useState(null);
+  const [darkMode,setDarkMode]=useState(false);
+
+  if(!user) return <LoginScreen onLogin={setUser} darkMode={darkMode} setDarkMode={setDarkMode}/>;
+
+  // Each role → its own dedicated portal
+  if(user.role==="staff") return <StaffPortal user={user} onLogout={()=>setUser(null)}/>;
+  if(user.role==="admin") return <AdminPortal user={user} onLogout={()=>setUser(null)}/>;
+
+  // Students → chat app
+  return <ChatApp user={user} onLogout={()=>setUser(null)} darkMode={darkMode} setDarkMode={setDarkMode}/>;
+}

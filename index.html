@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UniAdvisor AI — Dunaújváros Egyetem</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>" />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: 'Segoe UI', system-ui, sans-serif; background: #1E1B4B; }
+
+      /* Loading screen — shows instantly before React loads */
+      #loading {
+        position: fixed; inset: 0;
+        background: #1E1B4B;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 18px; z-index: 9999;
+        transition: opacity 0.4s ease;
+      }
+      #loading.fade-out { opacity: 0; pointer-events: none; }
+      #loading-icon { font-size: 56px; animation: pulse 1.5s ease-in-out infinite; }
+      #loading-title { color: #FFFFFF; font-size: 24px; font-weight: 800; }
+      #loading-sub { color: #818CF8; font-size: 13px; }
+      #loading-dots { display: flex; gap: 8px; margin-top: 8px; }
+      #loading-dots span {
+        width: 10px; height: 10px; border-radius: 50%;
+        background: #4F46E5; display: inline-block;
+        animation: bounce 0.9s ease-in-out infinite;
+      }
+      #loading-dots span:nth-child(2) { animation-delay: 0.15s; }
+      #loading-dots span:nth-child(3) { animation-delay: 0.30s; }
+
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50%       { transform: scale(1.12); }
+      }
+      @keyframes bounce {
+        0%, 60%, 100% { transform: translateY(0); }
+        30%           { transform: translateY(-10px); }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Instant loading screen (visible before React hydrates) -->
+    <div id="loading">
+      <div id="loading-icon">🎓</div>
+      <div id="loading-title">UniAdvisor AI</div>
+      <div id="loading-sub">Dunaújváros Egyetem · Loading...</div>
+      <div id="loading-dots">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
+
+    <div id="root"></div>
+
+    <script type="module" src="/src/main.jsx"></script>
+
+    <script>
+      // Hide the loading screen once React has mounted
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const loader = document.getElementById('loading');
+          if (loader) {
+            loader.classList.add('fade-out');
+            setTimeout(() => loader.remove(), 400);
+          }
+        }, 300);
+      });
+    </script>
+  </body>
+</html>

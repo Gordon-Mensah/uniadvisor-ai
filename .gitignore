@@ -1,0 +1,19 @@
+# Python
+.env
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# ChromaDB — don't commit the vector store
+# (re-upload documents after deploy)
+chroma_db/
+
+# Node
+node_modules/
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
