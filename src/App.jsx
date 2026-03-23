@@ -428,11 +428,6 @@ function Bubble({ msg, C, isNew, onFeedback, uiLang }) {
 // ═══════════════════════════════════════════════════════════
 // LOGIN SCREEN (JWT-based)
 // ═══════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════
-// REPLACE the LoginScreen function in App.jsx with this one
-// Change: selecting a role no longer auto-fills email/password
-// ═══════════════════════════════════════════════════════════
-
 function LoginScreen({ onLogin }) {
   const [role,setRole]         = useState(null);
   const [email,setEmail]       = useState("");
@@ -449,27 +444,28 @@ function LoginScreen({ onLogin }) {
     admin:  ["admin@uniduna.hu","password123"],
   };
 
-  // ── Selecting a role just sets the role, does NOT fill fields ──
   const selectRole = (r) => {
-    setRole(r);
-    setError("");
-    setEmail("");
-    setPassword("");
+    setRole(r); setError("");
+    const [e,p] = DEMO[r];
+    setEmail(e); setPassword(p);
   };
 
   const handleLogin = async () => {
     if(!email.trim()||!password.trim()) { setError("Please enter email and password."); return; }
     setLoading(true); setError("");
     try {
+      // Try JWT endpoint first
       const res  = await fetch(`${API}/auth/login`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email.trim(),password:password.trim()})});
       const data = await res.json();
       if(!res.ok) throw new Error(data.detail||"Login failed");
       TokenStore.set(data.token);
       onLogin(data.user, data.token);
     } catch(e) {
+      // Fallback: direct Supabase query (plaintext passwords for older DB)
       try {
         const { data, error:err } = await supabase.from("users").select("*").eq("email",email.trim()).eq("active",true).single();
         if(err||!data) throw new Error("Invalid credentials");
+        // Accept either plaintext match OR role match (demo mode)
         if(data.password===password||data.role===role) {
           onLogin(data, null);
         } else {
@@ -487,21 +483,18 @@ function LoginScreen({ onLogin }) {
       {[["#0D9488","15%","10%",300],["#8B5CF6","80%","20%",200],["#0EA5E9","60%","70%",250]].map(([c,l,tp,s],i)=>(
         <div key={i} style={{ position:"absolute",left:l,top:tp,width:s,height:s,borderRadius:"50%",background:c,opacity:0.06,filter:"blur(60px)",pointerEvents:"none" }} />
       ))}
-
       {/* Lang toggle */}
       <div style={{ position:"absolute",top:20,right:24,display:"flex",gap:4 }}>
         {[["en","EN"],["hu","HU"]].map(([code,label])=>(
           <button key={code} onClick={()=>setUiLang(code)} style={{ padding:"5px 12px",borderRadius:8,border:`1px solid ${uiLang===code?"#0D9488":"rgba(255,255,255,0.15)"}`,background:uiLang===code?"rgba(13,148,136,0.2)":"transparent",color:uiLang===code?"#5EEAD4":"#64748B",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>{label}</button>
         ))}
       </div>
-
       <div style={{ width:"100%",maxWidth:480,padding:"24px 16px",position:"relative",zIndex:1 }}>
         <div style={{ textAlign:"center",marginBottom:32 }}>
           <div style={{ fontSize:44,marginBottom:10 }}>🎓</div>
           <h1 style={{ fontSize:26,fontWeight:800,color:"#F1F5F9",margin:"0 0 6px",letterSpacing:"-0.5px" }}>UniAdvisor AI</h1>
           <p style={{ fontSize:14,color:"#64748B",margin:0 }}>{t.university}</p>
         </div>
-
         {!role ? (
           <div>
             <p style={{ fontSize:13,color:"#94A3B8",textAlign:"center",marginBottom:16 }}>
@@ -522,24 +515,21 @@ function LoginScreen({ onLogin }) {
           </div>
         ) : (
           <div style={{ background:"rgba(255,255,255,0.05)",borderRadius:20,border:"1px solid rgba(255,255,255,0.1)",padding:"28px 28px 24px" }}>
-            <button onClick={()=>{setRole(null);setError("");setEmail("");setPassword("");}} style={{ background:"transparent",border:"none",color:"#64748B",cursor:"pointer",fontSize:13,marginBottom:16,display:"flex",alignItems:"center",gap:5,padding:0,fontFamily:"inherit" }}>{t.loginBack}</button>
-            <div style={{ fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:20 }}>
+            <button onClick={()=>{setRole(null);setError("");}} style={{ background:"transparent",border:"none",color:"#64748B",cursor:"pointer",fontSize:13,marginBottom:16,display:"flex",alignItems:"center",gap:5,padding:0,fontFamily:"inherit" }}>{t.loginBack}</button>
+            <div style={{ fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4 }}>
               {t.loginRoles.find(r=>r.id===role)?.icon} {uiLang==="hu"?"Bejelentkezés mint":"Sign in as"} {t.loginRoles.find(r=>r.id===role)?.label}
             </div>
-
-            {[
-              ["Email","email","email",email,setEmail],
-              [uiLang==="hu"?"Jelszó":"Password","password","password",password,setPassword]
-            ].map(([label,type,ph,val,setter])=>(
+            <div style={{ fontSize:11,color:"#475569",marginBottom:20,background:"rgba(255,255,255,0.05)",padding:"6px 10px",borderRadius:8 }}>
+              Demo: {DEMO[role][0]} / {DEMO[role][1]}
+            </div>
+            {[["Email","email","email",email,setEmail],[uiLang==="hu"?"Jelszó":"Password","password","password",password,setPassword]].map(([label,type,ph,val,setter])=>(
               <div key={label} style={{ marginBottom:14 }}>
                 <div style={{ fontSize:11,color:"#94A3B8",fontWeight:600,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.5px" }}>{label}</div>
                 <input type={type} value={val} onChange={e=>setter(e.target.value)} placeholder={ph} onKeyDown={e=>e.key==="Enter"&&handleLogin()}
                   style={{ width:"100%",padding:"11px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.07)",color:"#F1F5F9",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit" }} />
               </div>
             ))}
-
             {error && <div style={{ color:"#F87171",fontSize:12,marginBottom:12,textAlign:"center" }}>{error}</div>}
-
             <button onClick={handleLogin} disabled={loading} style={{ width:"100%",padding:"13px 0",borderRadius:12,border:"none",background:t.loginRoles.find(r=>r.id===role)?.color||"#0D9488",color:"#fff",fontSize:14,fontWeight:700,cursor:loading?"not-allowed":"pointer",opacity:loading?0.7:1,fontFamily:"inherit",transition:"all 0.15s" }}>
               {loading?(uiLang==="hu"?"Bejelentkezés…":"Signing in…"):(uiLang==="hu"?"Bejelentkezés":"Sign In")}
             </button>
@@ -558,6 +548,8 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
   const C   = THEMES[darkMode?"dark":"light"];
   // UI language: from user preference, or browser, defaults en
   const [uiLang,setUiLang]     = useState(user.language_pref||"en");
+  // chatLang = language the AI ALWAYS replies in (explicit, never auto-detected)
+  const [chatLang,setChatLang] = useState(user.language_pref||"en");
   const [sidebarOpen,setSidebarOpen] = useState(false);
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   const t = T[uiLang]||T.en;
@@ -612,15 +604,8 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
   const sendMessage = async (text=input) => {
     const q = text.trim(); if(!q||loading) return;
 
-    // ── Language detection: check current question first,
-    //    fall back to the last user message in history so
-    //    follow-up buttons inherit the conversation language
-    const lang = detectLang(q) !== "hu"
-      ? (() => {
-          const lastUserMsg = [...messages].reverse().find(m=>m.role==="user");
-          return lastUserMsg ? detectLang(lastUserMsg.content) : "en";
-        })()
-      : "hu";
+    // ── Language is set explicitly by the user toggle — no auto-detection ──
+    const lang = chatLang;
 
     setInput(""); setFollowups([]);
     const userMsg = {role:"user",content:q};
@@ -643,6 +628,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
           office,
           history,
           session_id:   sessionId,
+          reply_lang:   chatLang,
         }),
       });
       const data = await res.json();
@@ -728,7 +714,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
           {/* Lang toggle */}
           <div style={{ display:"flex",gap:4,marginBottom:10 }}>
             {[["en","EN"],["hu","HU"]].map(([code,label])=>(
-              <button key={code} onClick={()=>setUiLang(code)} style={{ flex:1,padding:"5px 0",borderRadius:7,border:`1px solid ${uiLang===code?C.accent:C.border}`,background:uiLang===code?`${C.accent}18`:"transparent",color:uiLang===code?C.accent:C.muted,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>{label}</button>
+              <button key={code} onClick={()=>{setUiLang(code);setChatLang(code);}} style={{ flex:1,padding:"5px 0",borderRadius:7,border:`1px solid ${uiLang===code?C.accent:C.border}`,background:uiLang===code?`${C.accent}18`:"transparent",color:uiLang===code?C.accent:C.muted,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>{label}</button>
             ))}
           </div>
           <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:10 }}>
@@ -825,7 +811,26 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
         </div>
 
         {/* Input */}
-        <div style={{ padding:"12px 24px 16px",borderTop:`1px solid ${C.border}`,background:C.surface,flexShrink:0 }}>
+        <div style={{ padding:"10px 24px 16px",borderTop:`1px solid ${C.border}`,background:C.surface,flexShrink:0 }}>
+          {/* AI Reply Language toggle */}
+          <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap" }}>
+            <span style={{ fontSize:11,color:C.muted,fontWeight:600 }}>
+              {chatLang==="en" ? "🤖 AI replies in:" : "🤖 AI válaszol:"}
+            </span>
+            {[{code:"en",label:"🇬🇧 English"},{code:"hu",label:"🇭🇺 Magyar"}].map(({code,label})=>(
+              <button key={code} onClick={()=>setChatLang(code)}
+                style={{ padding:"3px 12px",borderRadius:20,
+                  border:`1.5px solid ${chatLang===code?C.accent:C.border}`,
+                  background:chatLang===code?`${C.accent}18`:"transparent",
+                  color:chatLang===code?C.accent:C.muted,
+                  fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s" }}>
+                {label}
+              </button>
+            ))}
+            <span style={{ fontSize:10,color:C.muted,marginLeft:"auto",fontStyle:"italic" }}>
+              {chatLang==="en" ? "AI always replies in English" : "Az AI mindig magyarul válaszol"}
+            </span>
+          </div>
           <div style={{ display:"flex",gap:8,alignItems:"flex-end" }}>
             <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} placeholder={t.placeholder} rows={1}
               onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}}
@@ -835,7 +840,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
             />
             <button onClick={()=>sendMessage()} disabled={!input.trim()||loading}
               style={{ padding:"11px 20px",borderRadius:14,border:"none",background:input.trim()&&!loading?`linear-gradient(135deg,${C.accent},${C.accent2})`:"#E2E8F0",color:input.trim()&&!loading?"#fff":"#94A3B8",fontSize:14,fontWeight:700,cursor:input.trim()&&!loading?"pointer":"not-allowed",fontFamily:"inherit",flexShrink:0,transition:"all 0.15s" }}>
-              {loading?"…":t.send}
+              {loading?"...":t.send}
             </button>
           </div>
         </div>

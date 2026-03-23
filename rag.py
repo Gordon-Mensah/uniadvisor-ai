@@ -1,297 +1,243 @@
-import os
-import hashlib
-from functools import lru_cache
+"""
+rag.py  —  UniAdvisor AI  (ultra-fast, no embeddings)
+──────────────────────────────────────────────────────
+OLD stack: LangChain + ChromaDB + HuggingFace (CPU) = 2-4s overhead
+NEW stack: In-memory BM25 keyword search + Groq direct = ~0.1s overhead
+"""
+
+import os, re, math, json, hashlib, threading
 from datetime import datetime
+from collections import defaultdict
 from dotenv import load_dotenv
 
 load_dotenv()
-
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from groq_key_rotator import get_groq_rotator
 
-CHROMA_DIR  = os.getenv("CHROMA_DIR", "./chroma_db")
-EMBED_MODEL = "all-MiniLM-L6-v2"
+DOCS_DIR  = os.getenv("DOCS_DIR", "./uploaded_docs")
+CACHE_MAX = 200
 
-os.environ.setdefault(
-    "SENTENCE_TRANSFORMERS_HOME",
-    os.getenv("SENTENCE_TRANSFORMERS_HOME", "./.model_cache")
-)
-
-# ── State ─────────────────────────────────────────────────
 _answer_cache = {}
-CACHE_MAX     = 200
+_doc_chunks   = []   # {"text","source","office","page","tokens"}
+_doc_lock     = threading.Lock()
 stats_log     = []
 all_questions = []
 
-# ── Office definitions ────────────────────────────────────
 OFFICES = {
-    "study_office":  { "name": "Study Office",                  "emoji": "📚", "keywords": ["course","subject","curriculum","grade","exam","credit","registration","enrolment","transcript","timetable","schedule","beiratkozás","kurzus","tanulmány"] },
-    "iro":           { "name": "International Relations Office", "emoji": "🌍", "keywords": ["international","erasmus","exchange","visa","residence","foreign","scholarship abroad","iro","international student","külföldi","ösztöndíj","csere"] },
-    "finance":       { "name": "Finance & Fees Office",          "emoji": "💰", "keywords": ["fee","tuition","payment","invoice","scholarship","financial","refund","bank","díj","fizetés","pénzügy"] },
-    "it_helpdesk":   { "name": "IT Helpdesk",                    "emoji": "💻", "keywords": ["it","wifi","password","computer","system","login","email","vpn","software","hardware","network","számítógép","jelszó"] },
-    "library":       { "name": "Library",                        "emoji": "📖", "keywords": ["library","book","journal","borrow","return","database","opening hours","könyvtár","könyv"] },
-    "student_union": { "name": "Student Union",                  "emoji": "🎓", "keywords": ["student union","club","event","sport","dormitory","housing","accommodation","kollégium"] },
-    "cs_dept":       { "name": "Computer Science Dept.",         "emoji": "🖥️", "keywords": ["computer science","programming","software","algorithm","cs","informatika","programozás"] },
-    "engineering":   { "name": "Engineering Dept.",              "emoji": "⚙️", "keywords": ["engineering","mechanical","electrical","manufacturing","műszaki","gépész"] },
-    "economics":     { "name": "Economics & Business Dept.",     "emoji": "📈", "keywords": ["economics","business","management","marketing","accounting","gazdaság","üzlet"] },
-    "general":       { "name": "General / University-wide",      "emoji": "🏛️", "keywords": [] },
+    "study_office":  {"name":"Study Office",                  "emoji":"📚","keywords":["course","subject","curriculum","grade","exam","credit","registration","enrolment","transcript","timetable","schedule","beiratkozás","kurzus","tanulmány","vizsga","féléve"]},
+    "iro":           {"name":"International Relations Office", "emoji":"🌍","keywords":["international","erasmus","exchange","visa","residence","foreign","scholarship abroad","iro","international student","külföldi","ösztöndíj","csere","tartózkodási"]},
+    "finance":       {"name":"Finance & Fees Office",          "emoji":"💰","keywords":["fee","tuition","payment","invoice","scholarship","financial","refund","bank","díj","fizetés","pénzügy","ösztöndíj","számla"]},
+    "it_helpdesk":   {"name":"IT Helpdesk",                    "emoji":"💻","keywords":["it","wifi","password","computer","system","login","email","vpn","software","hardware","network","számítógép","jelszó","internet"]},
+    "library":       {"name":"Library",                        "emoji":"📖","keywords":["library","book","journal","borrow","return","database","opening hours","könyvtár","könyv","folyóirat"]},
+    "student_union": {"name":"Student Union",                  "emoji":"🎓","keywords":["student union","club","event","sport","dormitory","housing","accommodation","kollégium","diákunió","esemény"]},
+    "cs_dept":       {"name":"Computer Science Dept.",         "emoji":"🖥️","keywords":["computer science","programming","software","algorithm","cs","informatika","programozás"]},
+    "engineering":   {"name":"Engineering Dept.",              "emoji":"⚙️","keywords":["engineering","mechanical","electrical","manufacturing","műszaki","gépész"]},
+    "economics":     {"name":"Economics & Business Dept.",     "emoji":"📈","keywords":["economics","business","management","marketing","accounting","gazdaság","üzlet"]},
+    "general":       {"name":"General / University-wide",      "emoji":"🏛️","keywords":[]},
 }
 
-# ── Hungarian detection ───────────────────────────────────
-_HU_CHARS = set("áéíóöőüűÁÉÍÓÖŐÜŰ")
-_HU_WORDS  = {
-    "az","egy","és","hogy","nem","van","mi","de","ezt","azt",
-    "kérem","köszönöm","mikor","hogyan","hol","melyik","mik",
-    "milyen","mennyi","határidő","kurzus","beiratkozás","tandíj",
-    "ösztöndíj","vizsgá","vizsga","tantárgy","félév","felvétel",
-    "könyvtár","díj","fizetés","jelszó","számítógép","kollégium",
-    "igen","nem","szia","hello","üdvözlet","segítség","szeretném",
-    "lehet","kell","tudok","tudna","lenne","lesz","volt","nincs",
-}
 
-def detect_language(text: str) -> str:
-    """
-    Returns 'hu' if the text is Hungarian, 'en' otherwise.
-    Checks for Hungarian-specific characters and common Hungarian words.
-    """
-    # Presence of Hungarian-specific accented chars is a strong signal
-    if any(c in _HU_CHARS for c in text):
-        return "hu"
-    # Check for Hungarian words (word-boundary match)
-    words = set(text.lower().split())
-    if words & _HU_WORDS:
-        return "hu"
-    return "en"
+# ── Document store ────────────────────────────────────────
+
+def _tokenize(text):
+    return re.findall(r"[a-záéíóöőüűA-ZÁÉÍÓÖŐÜŰ0-9]+", text.lower())
+
+def _chunk_text(text, chunk_size=400, overlap=80):
+    words = text.split()
+    chunks, i = [], 0
+    while i < len(words):
+        c = " ".join(words[i:i+chunk_size])
+        if c.strip():
+            chunks.append(c)
+        i += chunk_size - overlap
+    return chunks
+
+def add_document(text, source, office="general", page=None):
+    chunks = _chunk_text(text)
+    with _doc_lock:
+        for chunk in chunks:
+            _doc_chunks.append({"text":chunk,"source":source,"office":office,"page":page,"tokens":_tokenize(chunk)})
+    print(f"[UniAdvisor] +{len(chunks)} chunks '{source}' office={office}")
+
+def clear_documents(office=None):
+    global _doc_chunks
+    with _doc_lock:
+        _doc_chunks = [d for d in _doc_chunks if d["office"]!=office] if office else []
+
+def doc_count():
+    return len(_doc_chunks)
+
+def save_docs_to_disk():
+    os.makedirs(DOCS_DIR, exist_ok=True)
+    with _doc_lock:
+        data = [{"text":d["text"],"source":d["source"],"office":d["office"],"page":d["page"]} for d in _doc_chunks]
+    with open(os.path.join(DOCS_DIR,"_chunks.json"),"w",encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+    print(f"[UniAdvisor] Saved {len(data)} chunks")
+
+def load_docs_from_disk():
+    path = os.path.join(DOCS_DIR,"_chunks.json")
+    if not os.path.exists(path):
+        return
+    with open(path,"r",encoding="utf-8") as f:
+        data = json.load(f)
+    global _doc_chunks
+    with _doc_lock:
+        _doc_chunks = [{"text":d["text"],"source":d["source"],"office":d.get("office","general"),"page":d.get("page"),"tokens":_tokenize(d["text"])} for d in data]
+    print(f"[UniAdvisor] Loaded {len(_doc_chunks)} chunks from disk")
 
 
-def detect_office(question: str) -> str:
-    """Auto-detect the most relevant office from a question using keywords."""
-    lower = question.lower()
-    scores = {}
-    for office_id, info in OFFICES.items():
-        if office_id == "general":
-            continue
-        score = sum(1 for kw in info["keywords"] if kw in lower)
+# ── BM25 search (replaces HuggingFace + ChromaDB) ────────
+
+def _bm25_search(query, office=None, k=3):
+    with _doc_lock:
+        pool = [d for d in _doc_chunks if office is None or d["office"]==office or office=="general"]
+        if not pool:
+            pool = list(_doc_chunks)
+    if not pool:
+        return []
+    qtoks = _tokenize(query)
+    if not qtoks:
+        return pool[:k]
+    k1, b = 1.5, 0.75
+    N = len(pool)
+    avgdl = sum(len(d["tokens"]) for d in pool) / N
+    idf = {}
+    for t in set(qtoks):
+        df = sum(1 for d in pool if t in d["tokens"])
+        idf[t] = math.log((N-df+0.5)/(df+0.5)+1)
+    scores = []
+    for i, doc in enumerate(pool):
+        dl = len(doc["tokens"])
+        tf_map = defaultdict(int)
+        for t in doc["tokens"]: tf_map[t] += 1
+        score = sum(idf.get(t,0)*tf_map[t]*(k1+1)/(tf_map[t]+k1*(1-b+b*dl/avgdl)) for t in qtoks if tf_map[t]>0)
         if score > 0:
-            scores[office_id] = score
+            scores.append((score, i))
+    scores.sort(reverse=True)
+    return [pool[i] for _,i in scores[:k]]
+
+
+# ── Office detection ──────────────────────────────────────
+
+def detect_office(question):
+    lower = question.lower()
+    scores = {oid: sum(1 for kw in info["keywords"] if kw in lower)
+              for oid, info in OFFICES.items() if oid!="general"}
+    scores = {k:v for k,v in scores.items() if v>0}
     return max(scores, key=scores.get) if scores else "general"
 
-
-def _cache_key(question: str, major: str, year: str, office: str, nationality: str) -> str:
+def _cache_key(question, major, year, office, nationality):
     return hashlib.md5(f"{question.lower().strip()}|{major}|{year}|{office}|{nationality}".encode()).hexdigest()
 
 
-@lru_cache(maxsize=1)
-def get_embeddings():
-    print("[UniAdvisor] Loading embedding model...")
-    return HuggingFaceEmbeddings(
-        model_name=EMBED_MODEL,
-        model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True, "batch_size": 32},
-    )
+# ── Main answer function ──────────────────────────────────
 
-
-@lru_cache(maxsize=1)
-def get_vectorstore():
-    print("[UniAdvisor] Loading vector store...")
-    return Chroma(
-        persist_directory=CHROMA_DIR,
-        embedding_function=get_embeddings(),
-        collection_name="university_docs",
-    )
-
-
-def get_answer(
-    question:            str,
-    student_name:        str  = "Student",
-    student_year:        str  = "Year 1",
-    student_major:       str  = "General",
-    student_nationality: str  = "Hungarian",
-    office:              str  = "auto",
-    history:             list = None,
-) -> tuple:
-    """
-    Returns: (answer, sources, detected_office)
-    Target latency: <3 seconds using llama-3.1-8b-instant
-    """
+def get_answer(question, student_name="Student", student_year="Year 1",
+               student_major="General", student_nationality="Hungarian",
+               office="auto", history=None, reply_lang=None):
     if history is None:
         history = []
-
-    rotator     = get_groq_rotator()
-    vectorstore = get_vectorstore()
-
+    rotator = get_groq_rotator()
     all_questions.append(question)
 
-    # ── Language detection — done ONCE, used everywhere ──
-    # Check current question first; if unclear, check last user message
-    lang = detect_language(question)
-    if lang == "en" and history:
-        last_user = next(
-            (m["content"] for m in reversed(history) if m.get("role") == "user"),
-            None
-        )
-        if last_user:
-            lang = detect_language(last_user)
-
-    # ── Office detection ──────────────────────────────────
+    # Office detection
     if not office or office == "auto":
         office = detect_office(question)
-        # International students asking about money/visa → IRO
-        if student_nationality.lower() not in ("hungarian", "magyar"):
+        if student_nationality.lower() not in ("hungarian","magyar"):
             if any(t in question.lower() for t in ["scholarship","visa","residence","permit","erasmus","exchange","tuition","fee"]):
                 office = "iro"
 
-    # ── Cache check (skip cache when history present) ─────
-    cache_key = _cache_key(question, student_major, student_year, office, student_nationality)
-    if cache_key in _answer_cache and not history:
-        print("[UniAdvisor] Cache hit!")
-        cached = _answer_cache[cache_key]
-        return cached["answer"], cached["sources"], cached["office"]
+    # Cache
+    ck = _cache_key(question, student_major, student_year, office, student_nationality)
+    if ck in _answer_cache and not history:
+        c = _answer_cache[ck]
+        return c["answer"], c["sources"], c["office"]
 
-    doc_count   = vectorstore._collection.count()
-    office_info = OFFICES.get(office, OFFICES["general"])
+    office_info  = OFFICES.get(office, OFFICES["general"])
+    is_intl      = student_nationality.lower() not in ("hungarian","magyar")
+    nat_note     = f"Student is international ({student_nationality}): mention visa/Erasmus info if relevant. " if is_intl else ""
 
-    # ── Language instruction (strict, concise) ────────────
-    if lang == "hu":
-        lang_instruction = "Válaszolj CSAK magyarul. Ne használj angolt."
+    # Language: explicit from frontend wins, fallback to auto-detect
+    if reply_lang in ("hu", "hungarian", "Magyar"):
+        lang = "Hungarian"
+    elif reply_lang in ("en", "english", "English"):
+        lang = "English"
     else:
-        lang_instruction = "Reply in ENGLISH only. Do not use Hungarian."
+        hu_chars = set("áéíóöőüűÁÉÍÓÖŐÜŰ")
+        hu_words = {"az","egy","és","hogy","nem","van","mi","de","ezt","azt","kérem","köszönöm","mikor","hogyan","hol","milyen","mennyi","határidő","kurzus","beiratkozás","tandíj","ösztöndíj","vizsga"}
+        is_hu = any(c in hu_chars for c in question) or any(w in question.lower().split() for w in hu_words)
+        lang  = "Hungarian" if is_hu else "English"
 
-    # ── No documents fallback ─────────────────────────────
-    if doc_count == 0:
-        is_intl = student_nationality.lower() not in ("hungarian", "magyar")
-        prompt  = (
-            f"You are UniAdvisor AI at Dunaujvaros Egyetem. "
-            f"Student: {student_name}, {student_major}. "
-            f"{'International student. ' if is_intl else ''}"
-            f"{lang_instruction} "
-            f"No documents uploaded yet — use general knowledge. Be concise.\n"
-            f"Q: {question}\nA:"
+    # No docs fallback
+    if doc_count() == 0:
+        r = rotator.chat(
+            messages=[{"role":"user","content":f"UniAdvisor AI, Dunaujvaros Egyetem. {nat_note}You MUST reply in {lang} only. No docs yet—use general knowledge.\nQ: {question}\nA:"}],
+            max_tokens=320, temperature=0.3, model="llama-3.1-8b-instant",
         )
-        response = rotator.chat(
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=200,
-            temperature=0.2,
-            model="llama-3.1-8b-instant",   # fastest model
-        )
-        return response.choices[0].message.content, [], office
+        return r.choices[0].message.content, [], office
 
-    # ── Vector search: k=2 for speed ─────────────────────
-    where_filter = {"office": {"$eq": office}} if office != "general" else None
-    try:
-        if where_filter:
-            docs = vectorstore.similarity_search(question, k=2, filter=where_filter)
-            if not docs:
-                docs = vectorstore.similarity_search(question, k=2)
-        else:
-            docs = vectorstore.similarity_search(question, k=2)
-    except Exception:
-        docs = vectorstore.similarity_search(question, k=2)
+    # BM25 search
+    docs = _bm25_search(question, office=office, k=3)
+    if not docs and office != "general":
+        docs = _bm25_search(question, office=None, k=3)
 
-    # ── Truncate context to keep prompt short ─────────────
-    # ~600 chars per chunk × 2 chunks = ~1200 chars context
-    context_parts = []
-    for d in docs:
-        text = d.page_content.strip()
-        if len(text) > 600:
-            text = text[:600] + "…"
-        context_parts.append(text)
-    context = "\n\n".join(context_parts)
+    context = "\n\n".join(d["text"] for d in docs)
 
-    # ── Build citations ───────────────────────────────────
+    # Sources
     seen, sources = set(), []
     for d in docs:
-        src  = d.metadata.get("source", "University Document")
-        page = d.metadata.get("page", None)
-        off  = d.metadata.get("office", office)
-        key  = f"{src}|{page}"
+        key = f"{d['source']}|{d['page']}"
         if key not in seen:
             seen.add(key)
-            entry = {
-                "file":         src,
-                "office":       off,
-                "office_name":  OFFICES.get(off, {}).get("name", off),
-                "office_emoji": OFFICES.get(off, {}).get("emoji", "🏛️"),
-            }
-            if page is not None:
-                entry["page"] = page + 1
+            entry = {"file":d["source"],"office":d["office"],
+                     "office_name":OFFICES.get(d["office"],{}).get("name",d["office"]),
+                     "office_emoji":OFFICES.get(d["office"],{}).get("emoji","🏛️")}
+            if d["page"] is not None:
+                entry["page"] = d["page"]+1
             sources.append(entry)
 
-    # ── System prompt — kept SHORT for speed ─────────────
-    is_intl = student_nationality.lower() not in ("hungarian", "magyar")
-    system_msg = (
-        f"UniAdvisor AI — {office_info['emoji']} {office_info['name']}, Dunaujvaros Egyetem.\n"
-        f"Student: {student_name}, {student_year}, {student_major}"
-        f"{', international (' + student_nationality + ')' if is_intl else ''}.\n"
-        f"{lang_instruction}\n"
-        f"Answer ONLY from the context below. Be concise — use bullet points for lists. "
-        f"If not in context, say so and direct to {office_info['name']}.\n\n"
-        f"Context:\n{context}"
-    )
+    # Groq call
+    sys = (f"UniAdvisor AI — {office_info['emoji']} {office_info['name']}, Dunaujvaros Egyetem.\n"
+           f"Student: {student_name}, {student_year}, {student_major} ({student_nationality}).\n"
+           f"{nat_note}CRITICAL: You MUST reply in {lang} ONLY. Do NOT switch languages under any circumstance.\n"
+           f"Answer from context only. If not found, say so and refer to {office_info['name']}.\n"
+           f"Be concise. Bullet points for lists.\nContext:\n{context}")
 
-    # ── Build messages — last 4 history messages only ─────
-    messages = [{"role": "system", "content": system_msg}]
-    for msg in (history or [])[-4:]:
-        role = msg.get("role", "user")
-        if role not in ("user", "assistant"):
-            role = "user"
-        messages.append({"role": role, "content": msg.get("content", "")})
-    messages.append({"role": "user", "content": question})
+    msgs = [{"role":"system","content":sys}]
+    for m in (history or [])[-4:]:
+        role = m.get("role","user")
+        if role not in ("user","assistant"): role = "user"
+        msgs.append({"role":role,"content":m.get("content","")})
+    msgs.append({"role":"user","content":question})
 
-    # ── LLM call — llama-3.1-8b-instant is the fastest ───
-    response = rotator.chat(
-        messages=messages,
-        max_tokens=220,          # was 380 — shorter = faster
-        temperature=0.1,
-        model="llama-3.1-8b-instant",
-    )
-    answer = response.choices[0].message.content
+    r = rotator.chat(messages=msgs, max_tokens=320, temperature=0.1, model="llama-3.1-8b-instant")
+    answer = r.choices[0].message.content
 
-    # ── Cache ─────────────────────────────────────────────
+    # Cache
     if len(_answer_cache) >= CACHE_MAX:
         del _answer_cache[next(iter(_answer_cache))]
-    _answer_cache[cache_key] = {"answer": answer, "sources": sources, "office": office}
+    _answer_cache[ck] = {"answer":answer,"sources":sources,"office":office}
 
-    stats_log.append({
-        "timestamp":           datetime.now().isoformat(),
-        "question":            question,
-        "student_major":       student_major,
-        "student_year":        student_year,
-        "student_nationality": student_nationality,
-        "office":              office,
-    })
-
+    stats_log.append({"timestamp":datetime.now().isoformat(),"question":question,
+                      "student_major":student_major,"student_year":student_year,
+                      "student_nationality":student_nationality,"office":office})
     return answer, sources, office
 
 
-def get_stats() -> dict:
+# ── Stats ─────────────────────────────────────────────────
+
+def get_stats():
     total = len(stats_log)
-    majors, years, offices_count, nationalities = {}, {}, {}, {}
-
+    majors, years, offices_count, nationalities = {},{},{},{}
     for e in stats_log:
-        m = e.get("student_major",       "Unknown")
-        y = e.get("student_year",        "Unknown")
-        o = e.get("office",              "general")
-        n = e.get("student_nationality", "Unknown")
-        majors[m]        = majors.get(m, 0)        + 1
-        years[y]         = years.get(y,  0)        + 1
-        offices_count[o] = offices_count.get(o, 0) + 1
-        nationalities[n] = nationalities.get(n, 0) + 1
+        for d,k in [(majors,"student_major"),(years,"student_year"),(offices_count,"office"),(nationalities,"student_nationality")]:
+            v = e.get(k,"Unknown"); d[v] = d.get(v,0)+1
+    return {"total_questions":total,"questions_by_major":majors,"questions_by_year":years,
+            "questions_by_office":offices_count,"questions_by_nationality":nationalities,
+            "indexed_chunks":doc_count(),"cached_answers":len(_answer_cache),
+            "recent_questions":[e["question"] for e in stats_log[-5:]],"all_questions":all_questions}
 
-    try:
-        indexed = get_vectorstore()._collection.count()
-    except Exception:
-        indexed = 0
 
-    return {
-        "total_questions":          total,
-        "questions_by_major":       majors,
-        "questions_by_year":        years,
-        "questions_by_office":      offices_count,
-        "questions_by_nationality": nationalities,
-        "indexed_chunks":           indexed,
-        "cached_answers":           len(_answer_cache),
-        "recent_questions":         [e["question"] for e in stats_log[-5:]],
-        "all_questions":            all_questions,
-    }
+# ── Backward compat stubs ─────────────────────────────────
+def get_vectorstore(): return None
+def get_embeddings():  return None

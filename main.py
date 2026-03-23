@@ -59,8 +59,8 @@ except Exception:
     sb = None
     SUPABASE_AVAILABLE = False
 
-from rag import get_answer, get_stats, get_embeddings, get_vectorstore
-from ingest import ingest_document, list_documents
+from rag import get_answer, get_stats, add_document, load_docs_from_disk, save_docs_to_disk, doc_count, clear_documents, OFFICES, detect_office
+# ingest now handled directly in rag.py via add_document
 
 # ── In-memory fallback stores ─────────────────────────────────
 announcements = []
@@ -166,6 +166,7 @@ def audit(actor_email: str, actor_role: str, action: str, target: str = None, de
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("[UniAdvisor] Starting up...")
+    load_docs_from_disk()
     print(f"[UniAdvisor] bcrypt: {'✅' if BCRYPT_AVAILABLE else '⚠️ fallback'}")
     print(f"[UniAdvisor] Supabase: {'✅' if SUPABASE_AVAILABLE else '⚠️ offline mode'}")
     # NOTE: Embedding model loads lazily on first /chat request
@@ -214,6 +215,7 @@ class ChatRequest(BaseModel):
     office:         str  = "auto"
     history:        List[dict] = []
     session_id:     Optional[str] = None
+    reply_lang:     Optional[str] = None   # "en" or "hu" — set by frontend toggle
 
 class AnnouncementCreate(BaseModel):
     text:         str
@@ -362,6 +364,7 @@ async def chat(req: ChatRequest):
             student_nationality=req.student_nationality,
             office=req.office,
             history=req.history,
+            reply_lang=req.reply_lang,
         )
     except Exception as e:
         tb = traceback.format_exc()
@@ -417,28 +420,28 @@ async def upload_document(file: UploadFile = File(...), office: str = "general")
         raise HTTPException(status_code=400, detail="Only PDF, TXT, DOCX supported.")
     try:
         contents = await file.read()
-        result   = ingest_document(contents, file.filename, office=office)
+        text = _extract_text(contents, file.filename)
+        add_document(text, source=file.filename, office=office)
+        save_docs_to_disk()
+        chunks = doc_count()
         doc_registry[file.filename] = {
             "uploaded_at": datetime.now().isoformat(),
             "size_kb":     round(len(contents) / 1024, 1),
-            "chunks":      result["chunks"],
+            "chunks":      chunks,
             "office":      office,
         }
-        return {"message": f"'{file.filename}' ingested.", "chunks": result["chunks"]}
+        return {"message": f"'{file.filename}' ingested.", "chunks": chunks}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/documents")
 def documents():
-    docs = list_documents()
     enriched = []
-    for d in docs:
-        name = d.get("name", "") if isinstance(d, dict) else d
-        info = doc_registry.get(name, {})
+    for name, info in doc_registry.items():
         enriched.append({
             "name":        name,
-            "office":      d.get("office", "general") if isinstance(d, dict) else info.get("office","general"),
-            "uploaded_at": info.get("uploaded_at", "Unknown"),
+            "office":      info.get("office","general"),
+            "uploaded_at": info.get("uploaded_at","Unknown"),
             "size_kb":     info.get("size_kb", 0),
             "chunks":      info.get("chunks", 0),
         })
@@ -835,8 +838,7 @@ async def translate_document(file: UploadFile = File(...), target_language: str 
     try:
         from groq_key_rotator import get_groq_rotator
         contents = await file.read()
-        from ingest import extract_text
-        text = extract_text(contents, file.filename)
+        text = _extract_text(contents, file.filename)
         if len(text) > 8000:
             text = text[:8000] + "\n\n[Truncated...]"
         lang_name = "Hungarian" if target_language == "hu" else "English"
@@ -854,15 +856,9 @@ async def translate_document(file: UploadFile = File(...), target_language: str 
 @app.get("/offices")
 def get_offices():
     try:
-        from rag import OFFICES, get_vectorstore
-        vs    = get_vectorstore()
         items = []
         for oid, info in OFFICES.items():
-            try:
-                results = vs.get(where={"office": {"$eq": oid}})
-                count   = len(results.get("ids", []))
-            except Exception:
-                count = 0
+            count = sum(1 for d in doc_registry.values() if d.get("office") == oid)
             items.append({"id": oid, "name": info["name"], "emoji": info.get("emoji","🏛️"), "doc_count": count})
         return {"offices": items}
     except Exception as e:
@@ -871,16 +867,8 @@ def get_offices():
 @app.get("/offices/{office_id}/documents")
 def office_documents(office_id: str):
     try:
-        from rag import get_vectorstore
-        vs      = get_vectorstore()
-        results = vs.get(where={"office": {"$eq": office_id}}, include=["metadatas"])
-        seen    = set()
-        docs    = []
-        for m in (results.get("metadatas") or []):
-            src = m.get("source","Unknown")
-            if src not in seen:
-                seen.add(src)
-                docs.append({"name": src, "office": office_id, **doc_registry.get(src, {})})
+        docs = [{"name": name, "office": office_id, **info}
+                for name, info in doc_registry.items() if info.get("office") == office_id]
         return {"documents": docs, "office_id": office_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -889,7 +877,6 @@ def office_documents(office_id: str):
 def detect_office_endpoint(body: dict):
     question = body.get("question","")
     try:
-        from rag import detect_office
         return {"office": detect_office(question)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
