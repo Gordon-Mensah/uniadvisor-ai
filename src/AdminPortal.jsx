@@ -164,7 +164,14 @@ export default function AdminPortal({ user, token, onLogout }) {
     safeFetch(`${API}/feedback`,         d => setFeedbackData(d));
     safeFetch(`${API}/events`,           d => setEvents(d.events || []));
     // Survey responses fetched directly from Supabase
-    try { _sb.from("survey_responses").select("*").order("submitted_at",{ascending:false}).then(({data})=>{ if(data) setSurveyData(data); }); } catch{}
+    // Survey responses — fetch with error logging
+    _sb.from("survey_responses").select("*").order("submitted_at",{ascending:false})
+      .then(({data, error}) => {
+        if(error) console.error("Survey fetch error:", error);
+        if(data)  setSurveyData(data);
+        else      setSurveyData([]);
+      })
+      .catch(e => { console.error("Survey fetch failed:", e); setSurveyData([]); });
   }, []);
 
   const postAnn = async () => {
@@ -696,7 +703,7 @@ export default function AdminPortal({ user, token, onLogout }) {
             <div>
               <h2 style={{ fontSize:18,fontWeight:700,color:D.text,margin:"0 0 6px",letterSpacing:"-0.3px" }}>Survey Results</h2>
               <p style={{ fontSize:12,color:D.text2,margin:"0 0 24px" }}>International student pain-point survey — your TDK research data</p>
-              {!surveyData ? <div style={{ color:D.muted,fontSize:12,textAlign:"center",padding:"60px 0" }}>Loading survey data…</div> :
+              {surveyData === null ? <div style={{ color:D.muted,fontSize:12,textAlign:"center",padding:"60px 0" }}>Loading survey data…</div> :
               surveyData.length === 0 ? <div style={{ color:D.muted,fontSize:12,textAlign:"center",padding:"60px 0" }}>No responses yet — share the survey link with international students!</div> : (
                 <div>
                   {/* Summary cards */}
