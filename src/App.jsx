@@ -11,6 +11,7 @@ import StaffPortal  from "./StaffPortal";
 import AdminPortal  from "./AdminPortal";
 import CampusMapPanel from "./CampusMapPanel";
 import SurveyPanel    from "./SurveyPanel";
+import PublicSurvey   from "./PublicSurvey";
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL      || "https://your-project.supabase.co";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "your-anon-key";
@@ -923,6 +924,9 @@ export default function App() {
     if(token) fetch(`${API}/auth/logout`,{method:"POST",headers:{Authorization:`Bearer ${token}`}}).catch(()=>{});
     TokenStore.del(); setToken(null); setUser(null);
   };
+
+  // Public survey — accessible without login at /survey
+  if(window.location.pathname === "/survey") return <PublicSurvey />;
 
   if(!user) return <LoginScreen onLogin={handleLogin} />;
   if(user.role==="staff") return <StaffPortal  user={user} token={token} onLogout={handleLogout} />;
