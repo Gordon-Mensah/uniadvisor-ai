@@ -113,14 +113,32 @@ def get_current_user(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid token")
     token = authorization.split(" ", 1)[1]
-    # Check in-memory first (fast path)
+
+    # 1. Check in-memory token store (fast path — works after fresh login)
     session = token_store.get(token)
     if session:
         if datetime.now() > session["expires_at"]:
             del token_store[token]
             raise HTTPException(status_code=401, detail="Session expired")
         return session
-    # Check Supabase
+
+    # 2. Try to decode as JWT (works even after server restart, no Supabase needed)
+    try:
+        import jwt as pyjwt
+        SECRET = os.getenv("JWT_SECRET", "uniadvisor-secret-key-2024")
+        payload = pyjwt.decode(token, SECRET, algorithms=["HS256"])
+        session = {
+            "user_id": payload.get("user_id"),
+            "email":   payload.get("email"),
+            "role":    payload.get("role", "student"),
+            "expires_at": datetime.now() + timedelta(hours=24),
+        }
+        token_store[token] = session   # cache it
+        return session
+    except Exception:
+        pass
+
+    # 3. Check Supabase auth_tokens table
     if SUPABASE_AVAILABLE:
         try:
             result = sb.table("auth_tokens").select("*, users(*)").eq("token", token).eq("revoked", False).single().execute()
@@ -128,14 +146,20 @@ def get_current_user(authorization: str = Header(None)):
                 expires = datetime.fromisoformat(result.data["expires_at"].replace("Z",""))
                 if datetime.now() > expires:
                     raise HTTPException(status_code=401, detail="Session expired")
-                session = {"user_id": result.data["user_id"], "email": result.data["users"]["email"]}
-                token_store[token] = {**session, "expires_at": expires}
+                session = {
+                    "user_id": result.data["user_id"],
+                    "email":   result.data["users"]["email"],
+                    "role":    result.data["users"].get("role","student"),
+                    "expires_at": expires,
+                }
+                token_store[token] = session
                 return session
         except HTTPException:
             raise
         except Exception:
             pass
-    raise HTTPException(status_code=401, detail="Invalid token")
+
+    raise HTTPException(status_code=401, detail="Invalid or expired token — please log out and log in again")
 
 
 # ═══════════════════════════════════════════════════════════════

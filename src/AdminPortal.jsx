@@ -187,11 +187,21 @@ export default function AdminPortal({ user, token, onLogout }) {
     setUploading(true); setUploadMsg("");
     const form = new FormData(); form.append("file", file);
     try {
-      const res = await fetch(`${API}/upload`, { method: "POST", body: form, headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const res = await fetch(`${API}/upload`, {
+        method: "POST",
+        body: form,
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       const data = await res.json();
-      setUploadMsg(res.ok ? `✓ ${data.message}` : `✗ ${data.detail}`);
-      if (res.ok) setDocs(prev => [...prev, { name: file.name, uploaded_at: new Date().toISOString(), chunks: data.chunks }]);
-    } catch { setUploadMsg("✗ Connection failed."); }
+      if (res.status === 401) {
+        setUploadMsg("✗ Session expired — please log out and log back in, then try again.");
+      } else if (res.ok) {
+        setUploadMsg(`✓ ${data.message}`);
+        setDocs(prev => [...prev, { name: file.name, uploaded_at: new Date().toISOString(), chunks: data.chunks }]);
+      } else {
+        setUploadMsg(`✗ ${data.detail || "Upload failed"}`);
+      }
+    } catch { setUploadMsg("✗ Connection failed — check the server is running."); }
     setUploading(false);
   };
 
