@@ -94,10 +94,22 @@ def verify_password(plain: str, hashed: str) -> bool:
 def generate_token() -> str:
     return secrets.token_urlsafe(48)
 
-def create_session(user_id: int, email: str) -> str:
-    token = generate_token()
-    expires = datetime.now() + timedelta(hours=24)
-    token_store[token] = {"user_id": user_id, "email": email, "expires_at": expires}
+JWT_SECRET = os.getenv("JWT_SECRET", "uniadvisor-secret-key-change-in-prod-2024")
+
+def create_session(user_id, email: str, role: str = "student") -> str:
+    """Create a signed JWT — survives server restarts, no DB lookup needed."""
+    import jwt as pyjwt
+    expires = datetime.now() + timedelta(hours=168)  # 7 days
+    payload = {
+        "user_id": user_id,
+        "email":   email,
+        "role":    role,
+        "exp":     expires.timestamp(),
+    }
+    token = pyjwt.encode(payload, JWT_SECRET, algorithm="HS256")
+    # Also cache in memory for speed
+    token_store[token] = {"user_id": user_id, "email": email, "role": role, "expires_at": expires}
+    # Also save to Supabase for audit/revocation (non-fatal)
     if SUPABASE_AVAILABLE:
         try:
             sb.table("auth_tokens").insert({
@@ -114,7 +126,7 @@ def get_current_user(authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="Missing or invalid token")
     token = authorization.split(" ", 1)[1]
 
-    # 1. Check in-memory token store (fast path — works after fresh login)
+    # 1. In-memory cache (fastest path)
     session = token_store.get(token)
     if session:
         if datetime.now() > session["expires_at"]:
@@ -122,44 +134,22 @@ def get_current_user(authorization: str = Header(None)):
             raise HTTPException(status_code=401, detail="Session expired")
         return session
 
-    # 2. Try to decode as JWT (works even after server restart, no Supabase needed)
+    # 2. Decode JWT — works after restarts, no Supabase needed
     try:
         import jwt as pyjwt
-        SECRET = os.getenv("JWT_SECRET", "uniadvisor-secret-key-2024")
-        payload = pyjwt.decode(token, SECRET, algorithms=["HS256"])
+        payload = pyjwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         session = {
-            "user_id": payload.get("user_id"),
-            "email":   payload.get("email"),
-            "role":    payload.get("role", "student"),
-            "expires_at": datetime.now() + timedelta(hours=24),
+            "user_id":    payload.get("user_id"),
+            "email":      payload.get("email"),
+            "role":       payload.get("role", "student"),
+            "expires_at": datetime.fromtimestamp(payload["exp"]),
         }
-        token_store[token] = session   # cache it
+        token_store[token] = session  # cache for next request
         return session
     except Exception:
         pass
 
-    # 3. Check Supabase auth_tokens table
-    if SUPABASE_AVAILABLE:
-        try:
-            result = sb.table("auth_tokens").select("*, users(*)").eq("token", token).eq("revoked", False).single().execute()
-            if result.data:
-                expires = datetime.fromisoformat(result.data["expires_at"].replace("Z",""))
-                if datetime.now() > expires:
-                    raise HTTPException(status_code=401, detail="Session expired")
-                session = {
-                    "user_id": result.data["user_id"],
-                    "email":   result.data["users"]["email"],
-                    "role":    result.data["users"].get("role","student"),
-                    "expires_at": expires,
-                }
-                token_store[token] = session
-                return session
-        except HTTPException:
-            raise
-        except Exception:
-            pass
-
-    raise HTTPException(status_code=401, detail="Invalid or expired token — please log out and log in again")
+    raise HTTPException(status_code=401, detail="Session expired — please log in again")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -315,7 +305,7 @@ def login(req: LoginRequest):
                 raise HTTPException(status_code=401, detail="Invalid email or password")
             if not user.get("active", True):
                 raise HTTPException(status_code=403, detail="Account is disabled")
-            token = create_session(user["id"], user["email"])
+            token = create_session(user["id"], user["email"], role=user.get("role","student"))
             return {
                 "token": token,
                 "user":  {k: v for k, v in user.items() if k != "password_hash"},
@@ -333,7 +323,7 @@ def login(req: LoginRequest):
     ]
     for u in DEMO_USERS:
         if u["email"] == req.email and u["password"] == req.password:
-            token = create_session(u["id"], u["email"])
+            token = create_session(u["id"], u["email"], role=u.get("role","student"))
             safe = {k: v for k, v in u.items() if k != "password"}
             return {"token": token, "user": safe}
     raise HTTPException(status_code=401, detail="Invalid email or password")
