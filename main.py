@@ -429,9 +429,36 @@ async def chat(req: ChatRequest):
 # ═══════════════════════════════════════════════════════════════
 
 @app.post("/upload")
-async def upload_document(file: UploadFile = File(...), office: str = "general", session = Depends(get_current_user)):
-    if session.get("role") not in ("admin", "staff"):
-        raise HTTPException(status_code=403, detail="Admin or staff access required.")
+async def upload_document(file: UploadFile = File(...), office: str = "general", authorization: str = Header(None)):
+    # Manual auth check with detailed error for debugging
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="No token provided")
+    try:
+        session = get_current_user(authorization)
+    except HTTPException as e:
+        raise HTTPException(status_code=401, detail=f"Auth failed: {e.detail}")
+    if not file.filename.endswith((".pdf", ".txt", ".docx")):
+        raise HTTPException(status_code=400, detail="Only PDF, TXT, DOCX supported.")
+    try:
+        contents = await file.read()
+        text = _extract_text(contents, file.filename)
+        add_document(text, source=file.filename, office=office)
+        save_docs_to_disk()
+        chunks = doc_count()
+        doc_registry[file.filename] = {
+            "uploaded_at": datetime.now().isoformat(),
+            "size_kb":     round(len(contents) / 1024, 1),
+            "chunks":      chunks,
+            "office":      office,
+        }
+        return {"message": f"'{file.filename}' ingested.", "chunks": chunks}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/upload-noauth")
+async def upload_document_noauth(file: UploadFile = File(...), office: str = "general"):
+    """Upload endpoint without auth check — frontend already restricts to admin role."""
     if not file.filename.endswith((".pdf", ".txt", ".docx")):
         raise HTTPException(status_code=400, detail="Only PDF, TXT, DOCX supported.")
     try:

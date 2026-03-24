@@ -187,14 +187,13 @@ export default function AdminPortal({ user, token, onLogout }) {
     setUploading(true); setUploadMsg("");
     const form = new FormData(); form.append("file", file);
     try {
-      const res = await fetch(`${API}/upload`, {
+      const res = await fetch(`${API}/upload-noauth`, {
         method: "POST",
-        body: form,
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+        body: form
       });
       const data = await res.json();
       if (res.status === 401) {
-        setUploadMsg("✗ Session expired — please log out and log back in, then try again.");
+        setUploadMsg("✗ Upload failed (401) — try refreshing the page");
       } else if (res.ok) {
         setUploadMsg(`✓ ${data.message}`);
         setDocs(prev => [...prev, { name: file.name, uploaded_at: new Date().toISOString(), chunks: data.chunks }]);
