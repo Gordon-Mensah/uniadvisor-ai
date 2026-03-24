@@ -1,8 +1,11 @@
 """
 rag.py  —  UniAdvisor AI  (ultra-fast, no embeddings)
 ──────────────────────────────────────────────────────
-OLD stack: LangChain + ChromaDB + HuggingFace (CPU) = 2-4s overhead
-NEW stack: In-memory BM25 keyword search + Groq direct = ~0.1s overhead
+FIX: Language is now 100% controlled by the frontend toggle.
+     No auto-detection from message content whatsoever.
+     reply_lang="en" → always English
+     reply_lang="hu" → always Hungarian
+     No value → defaults to English
 """
 
 import os, re, math, json, hashlib, threading
@@ -86,7 +89,7 @@ def load_docs_from_disk():
     print(f"[UniAdvisor] Loaded {len(_doc_chunks)} chunks from disk")
 
 
-# ── BM25 search (replaces HuggingFace + ChromaDB) ────────
+# ── BM25 search ───────────────────────────────────────────
 
 def _bm25_search(query, office=None, k=3):
     with _doc_lock:
@@ -126,8 +129,8 @@ def detect_office(question):
     scores = {k:v for k,v in scores.items() if v>0}
     return max(scores, key=scores.get) if scores else "general"
 
-def _cache_key(question, major, year, office, nationality):
-    return hashlib.md5(f"{question.lower().strip()}|{major}|{year}|{office}|{nationality}".encode()).hexdigest()
+def _cache_key(question, major, year, office, nationality, lang):
+    return hashlib.md5(f"{question.lower().strip()}|{major}|{year}|{office}|{nationality}|{lang}".encode()).hexdigest()
 
 
 # ── Main answer function ──────────────────────────────────
@@ -140,15 +143,25 @@ def get_answer(question, student_name="Student", student_year="Year 1",
     rotator = get_groq_rotator()
     all_questions.append(question)
 
-    # Office detection
+    # ── Office detection ──────────────────────────────────
     if not office or office == "auto":
         office = detect_office(question)
         if student_nationality.lower() not in ("hungarian","magyar"):
             if any(t in question.lower() for t in ["scholarship","visa","residence","permit","erasmus","exchange","tuition","fee"]):
                 office = "iro"
 
-    # Cache
-    ck = _cache_key(question, student_major, student_year, office, student_nationality)
+    # ── LANGUAGE: explicit from frontend ONLY — zero auto-detection ──
+    # reply_lang is set by the user's toggle in the UI.
+    # "en" or anything else → English
+    # "hu" → Hungarian
+    # This NEVER changes based on what the user typed.
+    if reply_lang == "hu":
+        lang = "Hungarian"
+    else:
+        lang = "English"
+
+    # Cache (now includes lang so EN/HU get separate cached answers)
+    ck = _cache_key(question, student_major, student_year, office, student_nationality, lang)
     if ck in _answer_cache and not history:
         c = _answer_cache[ck]
         return c["answer"], c["sources"], c["office"]
@@ -157,21 +170,10 @@ def get_answer(question, student_name="Student", student_year="Year 1",
     is_intl      = student_nationality.lower() not in ("hungarian","magyar")
     nat_note     = f"Student is international ({student_nationality}): mention visa/Erasmus info if relevant. " if is_intl else ""
 
-    # Language: explicit from frontend wins, fallback to auto-detect
-    if reply_lang in ("hu", "hungarian", "Magyar"):
-        lang = "Hungarian"
-    elif reply_lang in ("en", "english", "English"):
-        lang = "English"
-    else:
-        hu_chars = set("áéíóöőüűÁÉÍÓÖŐÜŰ")
-        hu_words = {"az","egy","és","hogy","nem","van","mi","de","ezt","azt","kérem","köszönöm","mikor","hogyan","hol","milyen","mennyi","határidő","kurzus","beiratkozás","tandíj","ösztöndíj","vizsga"}
-        is_hu = any(c in hu_chars for c in question) or any(w in question.lower().split() for w in hu_words)
-        lang  = "Hungarian" if is_hu else "English"
-
     # No docs fallback
     if doc_count() == 0:
         r = rotator.chat(
-            messages=[{"role":"user","content":f"UniAdvisor AI, Dunaujvaros Egyetem. {nat_note}You MUST reply in {lang} only. No docs yet—use general knowledge.\nQ: {question}\nA:"}],
+            messages=[{"role":"user","content":f"UniAdvisor AI, Dunaujvaros Egyetem. {nat_note}You MUST reply in {lang} only. No docs yet — use general knowledge.\nQ: {question}\nA:"}],
             max_tokens=320, temperature=0.3, model="llama-3.1-8b-instant",
         )
         return r.choices[0].message.content, [], office
@@ -196,12 +198,22 @@ def get_answer(question, student_name="Student", student_year="Year 1",
                 entry["page"] = d["page"]+1
             sources.append(entry)
 
-    # Groq call
-    sys = (f"UniAdvisor AI — {office_info['emoji']} {office_info['name']}, Dunaujvaros Egyetem.\n"
-           f"Student: {student_name}, {student_year}, {student_major} ({student_nationality}).\n"
-           f"{nat_note}CRITICAL: You MUST reply in {lang} ONLY. Do NOT switch languages under any circumstance.\n"
-           f"Answer from context only. If not found, say so and refer to {office_info['name']}.\n"
-           f"Be concise. Bullet points for lists.\nContext:\n{context}")
+    # ── System prompt — language lock is ABSOLUTE ─────────
+    sys = (
+        f"UniAdvisor AI — {office_info['emoji']} {office_info['name']}, Dunaujvaros Egyetem.\n"
+        f"Student: {student_name}, {student_year}, {student_major} ({student_nationality}).\n"
+        f"{nat_note}"
+        f"\n"
+        f"LANGUAGE RULE — THIS IS ABSOLUTE AND CANNOT BE OVERRIDDEN:\n"
+        f"You MUST reply in {lang} ONLY.\n"
+        f"Do NOT switch to any other language regardless of what language the student writes in.\n"
+        f"Do NOT mix languages. Do NOT add translations.\n"
+        f"Every single word of your response must be in {lang}.\n"
+        f"\n"
+        f"Answer from the context below only. If the answer is not in the context, say so politely and refer to {office_info['name']}.\n"
+        f"Be concise. Use bullet points for lists.\n"
+        f"\nContext:\n{context}"
+    )
 
     msgs = [{"role":"system","content":sys}]
     for m in (history or [])[-4:]:
