@@ -7,7 +7,7 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 const _sb = createClient(import.meta.env.VITE_SUPABASE_URL||"", import.meta.env.VITE_SUPABASE_ANON_KEY||"");
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API = import.meta.env.VITE_API_URL || "";
 
 // ── Dark palette ───────────────────────────────────────────────
 const D = {
@@ -140,6 +140,7 @@ export default function AdminPortal({ user, token, onLogout }) {
   const [escalations, setEscalations]   = useState([]);
   const [auditLogs, setAuditLogs]       = useState([]);
   const [feedbackData, setFeedbackData] = useState(null);
+  const [surveyData,   setSurveyData]   = useState(null);
   const [events, setEvents]             = useState([]);
   const [replyText, setReplyText]       = useState({});
   const [replying, setReplying]         = useState(null);
@@ -186,7 +187,7 @@ export default function AdminPortal({ user, token, onLogout }) {
     setUploading(true); setUploadMsg("");
     const form = new FormData(); form.append("file", file);
     try {
-      const res = await fetch(`${API}/upload`, { method: "POST", body: form });
+      const res = await fetch(`${API}/upload`, { method: "POST", body: form, headers: token ? { Authorization: `Bearer ${token}` } : {} });
       const data = await res.json();
       setUploadMsg(res.ok ? `✓ ${data.message}` : `✗ ${data.detail}`);
       if (res.ok) setDocs(prev => [...prev, { name: file.name, uploaded_at: new Date().toISOString(), chunks: data.chunks }]);

@@ -415,7 +415,9 @@ async def chat(req: ChatRequest):
 # ═══════════════════════════════════════════════════════════════
 
 @app.post("/upload")
-async def upload_document(file: UploadFile = File(...), office: str = "general"):
+async def upload_document(file: UploadFile = File(...), office: str = "general", session = Depends(get_current_user)):
+    if session.get("role") not in ("admin", "staff"):
+        raise HTTPException(status_code=403, detail="Admin or staff access required.")
     if not file.filename.endswith((".pdf", ".txt", ".docx")):
         raise HTTPException(status_code=400, detail="Only PDF, TXT, DOCX supported.")
     try:
