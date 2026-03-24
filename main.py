@@ -425,6 +425,30 @@ async def chat(req: ChatRequest):
 
 
 # ═══════════════════════════════════════════════════════════════
+# TEXT EXTRACTION HELPER
+# ═══════════════════════════════════════════════════════════════
+
+def _extract_text(contents: bytes, filename: str) -> str:
+    """Extract plain text from PDF, DOCX, or TXT bytes."""
+    fn = filename.lower()
+    try:
+        if fn.endswith(".pdf"):
+            import io
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(contents))
+            return "\n".join(p.extract_text() or "" for p in reader.pages)
+        elif fn.endswith(".docx"):
+            import io
+            from docx import Document as DocxDocument
+            doc = DocxDocument(io.BytesIO(contents))
+            return "\n".join(p.text for p in doc.paragraphs)
+        else:
+            return contents.decode("utf-8", errors="ignore")
+    except Exception as e:
+        raise ValueError(f"Cannot extract text from {filename}: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════
 # DOCUMENTS
 # ═══════════════════════════════════════════════════════════════
 
