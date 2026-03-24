@@ -4,6 +4,8 @@
 // ═══════════════════════════════════════════════════════════
 
 import { useState, useEffect, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
+const _sb = createClient(import.meta.env.VITE_SUPABASE_URL||"", import.meta.env.VITE_SUPABASE_ANON_KEY||"");
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -160,6 +162,8 @@ export default function AdminPortal({ user, token, onLogout }) {
     safeFetch(`${API}/audit-log`,        d => setAuditLogs(d.logs || []));
     safeFetch(`${API}/feedback`,         d => setFeedbackData(d));
     safeFetch(`${API}/events`,           d => setEvents(d.events || []));
+    // Survey responses fetched directly from Supabase
+    try { _sb.from("survey_responses").select("*").order("submitted_at",{ascending:false}).then(({data})=>{ if(data) setSurveyData(data); }); } catch{}
   }, []);
 
   const postAnn = async () => {
@@ -240,6 +244,7 @@ export default function AdminPortal({ user, token, onLogout }) {
     { id: "escalations",   icon: DIcon.send,      label: "Escalations",    badge: openEscalations || null },
     { id: "analytics",     icon: DIcon.faq,       label: "Office Analytics",badge: null },
     { id: "feedback",      icon: DIcon.copy,      label: "Satisfaction",   badge: null },
+    { id: "survey",        icon: DIcon.faq,       label: "Survey Results", badge: null },
     { id: "events",        icon: DIcon.alert,     label: "Events",         badge: null },
     { id: "documents",     icon: DIcon.doc,       label: "Documents",      badge: alerts.length || null },
     { id: "faq",           icon: DIcon.faq,       label: "FAQ",            badge: null },
@@ -670,6 +675,86 @@ export default function AdminPortal({ user, token, onLogout }) {
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+          )}
+
+
+          {/* ══ SURVEY RESULTS ═══════════════════════════════════ */}
+          {section === "survey" && (
+            <div>
+              <h2 style={{ fontSize:18,fontWeight:700,color:D.text,margin:"0 0 6px",letterSpacing:"-0.3px" }}>Survey Results</h2>
+              <p style={{ fontSize:12,color:D.text2,margin:"0 0 24px" }}>International student pain-point survey — your TDK research data</p>
+              {!surveyData ? <div style={{ color:D.muted,fontSize:12,textAlign:"center",padding:"60px 0" }}>Loading survey data…</div> :
+              surveyData.length === 0 ? <div style={{ color:D.muted,fontSize:12,textAlign:"center",padding:"60px 0" }}>No responses yet — share the survey link with international students!</div> : (
+                <div>
+                  {/* Summary cards */}
+                  <div style={{ display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:24 }}>
+                    {[
+                      {label:"Total Responses", val:surveyData.length, color:D.purple},
+                      {label:"Avg Info Quality", val: (surveyData.reduce((s,r)=>s+(r.info_quality||0),0)/surveyData.filter(r=>r.info_quality).length||0).toFixed(1)+"/5", color:D.amber},
+                      {label:"Avg UniAdvisor Score", val: (surveyData.reduce((s,r)=>s+(r.uniadvisor_usefulness||0),0)/surveyData.filter(r=>r.uniadvisor_usefulness).length||0).toFixed(1)+"/5", color:D.green},
+                    ].map(k=>(
+                      <div key={k.label} style={{ background:D.card,border:`1px solid ${D.border}`,borderRadius:14,padding:"18px 20px",textAlign:"center" }}>
+                        <div style={{ fontSize:10,color:D.text2,letterSpacing:"0.8px",textTransform:"uppercase",marginBottom:8 }}>{k.label}</div>
+                        <div style={{ fontSize:28,fontWeight:800,color:k.color }}>{k.val}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Top pain points */}
+                  {(() => {
+                    const counts = {};
+                    surveyData.forEach(r => (r.arrival_confusion||"").split(", ").filter(Boolean).forEach(v => { counts[v]=(counts[v]||0)+1; }));
+                    const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,6);
+                    return sorted.length > 0 && (
+                      <div style={{ background:D.card,border:`1px solid ${D.border}`,borderRadius:14,padding:20,marginBottom:20 }}>
+                        <div style={{ fontSize:11,fontWeight:700,color:D.text,letterSpacing:"0.5px",marginBottom:14 }}>TOP ARRIVAL PAIN POINTS</div>
+                        {sorted.map(([label,count])=>(
+                          <div key={label} style={{ display:"flex",alignItems:"center",gap:12,marginBottom:10 }}>
+                            <span style={{ fontSize:12,color:D.text,flex:1 }}>{label}</span>
+                            <div style={{ width:160,height:6,background:D.border2,borderRadius:3,overflow:"hidden" }}>
+                              <div style={{ height:"100%",width:`${(count/surveyData.length)*100}%`,background:D.purple,borderRadius:3 }} />
+                            </div>
+                            <span style={{ fontSize:11,color:D.muted,minWidth:28,textAlign:"right" }}>{count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Most wanted feature */}
+                  {(() => {
+                    const counts = {};
+                    surveyData.forEach(r => { if(r.missing_feature) counts[r.missing_feature]=(counts[r.missing_feature]||0)+1; });
+                    const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+                    return sorted.length > 0 && (
+                      <div style={{ background:D.card,border:`1px solid ${D.border}`,borderRadius:14,padding:20,marginBottom:20 }}>
+                        <div style={{ fontSize:11,fontWeight:700,color:D.text,letterSpacing:"0.5px",marginBottom:14 }}>MOST WANTED FEATURE</div>
+                        {sorted.map(([label,count])=>(
+                          <div key={label} style={{ display:"flex",alignItems:"center",gap:12,marginBottom:10 }}>
+                            <span style={{ fontSize:12,color:D.text,flex:1 }}>{label}</span>
+                            <div style={{ width:160,height:6,background:D.border2,borderRadius:3,overflow:"hidden" }}>
+                              <div style={{ height:"100%",width:`${(count/surveyData.length)*100}%`,background:D.green,borderRadius:3 }} />
+                            </div>
+                            <span style={{ fontSize:11,color:D.muted,minWidth:28,textAlign:"right" }}>{count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Open feedback */}
+                  <div style={{ background:D.card,border:`1px solid ${D.border}`,borderRadius:14,overflow:"hidden" }}>
+                    <div style={{ padding:"12px 16px",borderBottom:`1px solid ${D.border}`,fontSize:11,fontWeight:700,color:D.text,letterSpacing:"0.5px" }}>OPEN FEEDBACK (verbatim)</div>
+                    {surveyData.filter(r=>r.open_feedback).slice(0,10).map((r,i)=>(
+                      <div key={i} style={{ padding:"12px 16px",borderBottom:i<9?`1px solid ${D.border}`:"none" }}>
+                        <div style={{ fontSize:13,color:D.text,lineHeight:1.5,marginBottom:4 }}>"{r.open_feedback}"</div>
+                        <div style={{ fontSize:10,color:D.muted }}>{r.student_nationality} · {r.student_major} · {r.student_year}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

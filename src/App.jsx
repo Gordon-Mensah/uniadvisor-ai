@@ -1,7 +1,8 @@
 // ═══════════════════════════════════════════════════════════
 // App.jsx v3 — UniAdvisor AI
-// FIX: Language toggle is now explicit — no auto-detection
-//      AI always replies in whatever language the user selected
+// NEW: JWT auth, onboarding tour, progress tracker, feedback,
+//      events calendar, escalation replies, HU/EN UI toggle,
+//      campus map, profile-aware chat
 // ═══════════════════════════════════════════════════════════
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -9,10 +10,15 @@ import { createClient } from "@supabase/supabase-js";
 import StaffPortal  from "./StaffPortal";
 import AdminPortal  from "./AdminPortal";
 import CampusMapPanel from "./CampusMapPanel";
+import SurveyPanel    from "./SurveyPanel";
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL      || "https://your-project.supabase.co";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "your-anon-key";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// On Render, frontend and backend are on the same domain —
+// so we use a relative URL ("") which means requests go to
+// the same origin automatically. In local dev, Vite proxies
+// all API calls to localhost:8000 (see vite.config.js).
 const API = import.meta.env.VITE_API_URL || "";
 
 // ── Token storage (sessionStorage only — not localStorage) ─
@@ -113,6 +119,12 @@ const THEMES = {
   dark: { bg:"#0F172A",surface:"#1E293B",sidebar:"#1E293B",border:"#334155",border2:"#475569",text:"#F1F5F9",text2:"#CBD5E1",muted:"#64748B",bubble_user:"#0D9488",bubble_ai:"#1E293B",bubble_user_text:"#FFFFFF",bubble_ai_text:"#F1F5F9",input:"#1E293B",inputBorder:"#334155",accent:"#0D9488",accent2:"#0F766E",badge:"#134E4A",badgeText:"#5EEAD4" },
 };
 
+function detectLang(text) {
+  const huChars = /[áéíóöőüűÁÉÍÓÖŐÜŰ]/;
+  const huWords = /\b(az|egy|és|hogy|nem|van|mi|de|ezt|azt|kérem|köszönöm|mikor|hogyan|hol|melyik)\b/i;
+  return (huChars.test(text)||huWords.test(text))?"hu":"en";
+}
+
 // ── Small shared helpers ───────────────────────────────────
 function TypingDots({ C }) {
   return (
@@ -148,6 +160,7 @@ function OnboardingModal({ C, uiLang, onDone }) {
         <div style={{ fontSize:52,marginBottom:16 }}>{s.icon}</div>
         <div style={{ fontSize:20,fontWeight:800,color:C.text,marginBottom:12 }}>{s.title}</div>
         <div style={{ fontSize:14,color:C.muted,lineHeight:1.7,marginBottom:28 }}>{s.body}</div>
+        {/* Step dots */}
         <div style={{ display:"flex",justifyContent:"center",gap:6,marginBottom:24 }}>
           {steps.map((_,i)=>(
             <div key={i} style={{ width:i===step?20:7,height:7,borderRadius:4,background:i===step?C.accent:C.border,transition:"all 0.3s" }} />
@@ -199,6 +212,7 @@ function ProgressPanel({ C, user, uiLang, onClose }) {
           </div>
           <button onClick={onClose} style={{ background:"transparent",border:"none",fontSize:20,cursor:"pointer",color:C.muted }}>×</button>
         </div>
+        {/* Progress bar */}
         <div style={{ padding:"12px 24px 0",flexShrink:0 }}>
           <div style={{ height:8,background:C.border,borderRadius:4,overflow:"hidden" }}>
             <div style={{ height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${C.accent},${C.accent2})`,borderRadius:4,transition:"width 0.5s ease" }} />
@@ -278,6 +292,9 @@ function EventsPanel({ C, uiLang, onClose }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════
+// CAMPUS MAP PANEL
+// ═══════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════
 // ESCALATION REPLIES PANEL
 // ═══════════════════════════════════════════════════════════
@@ -389,6 +406,7 @@ function Bubble({ msg, C, isNew, onFeedback, uiLang }) {
           {isUser ? msg.content : (isNew ? <StreamingText text={msg.content} C={C} /> : <span style={{ whiteSpace:"pre-wrap",lineHeight:1.65,fontSize:14 }}>{msg.content}</span>)}
         </div>
       </div>
+      {/* Feedback row for AI messages */}
       {!isUser && !isNew && (
         <div style={{ display:"flex",alignItems:"center",gap:6,paddingLeft:40,marginTop:6 }}>
           <span style={{ fontSize:11,color:C.muted }}>{t.helpful}</span>
@@ -398,6 +416,7 @@ function Bubble({ msg, C, isNew, onFeedback, uiLang }) {
           {voted && <span style={{ fontSize:11,color:C.accent }}>✓</span>}
         </div>
       )}
+      {/* Office tag */}
       {!isUser && msg.office && (
         <div style={{ paddingLeft:40,marginTop:4 }}>
           <span style={{ fontSize:10,color:C.muted,background:C.badge,padding:"2px 8px",borderRadius:4 }}>{msg.office_emoji||"🏛️"} {msg.office_name||msg.office}</span>
@@ -436,15 +455,18 @@ function LoginScreen({ onLogin }) {
     if(!email.trim()||!password.trim()) { setError("Please enter email and password."); return; }
     setLoading(true); setError("");
     try {
+      // Try JWT endpoint first
       const res  = await fetch(`${API}/auth/login`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email.trim(),password:password.trim()})});
       const data = await res.json();
       if(!res.ok) throw new Error(data.detail||"Login failed");
       TokenStore.set(data.token);
       onLogin(data.user, data.token);
     } catch(e) {
+      // Fallback: direct Supabase query (plaintext passwords for older DB)
       try {
         const { data, error:err } = await supabase.from("users").select("*").eq("email",email.trim()).eq("active",true).single();
         if(err||!data) throw new Error("Invalid credentials");
+        // Accept either plaintext match OR role match (demo mode)
         if(data.password===password||data.role===role) {
           onLogin(data, null);
         } else {
@@ -462,6 +484,7 @@ function LoginScreen({ onLogin }) {
       {[["#0D9488","15%","10%",300],["#8B5CF6","80%","20%",200],["#0EA5E9","60%","70%",250]].map(([c,l,tp,s],i)=>(
         <div key={i} style={{ position:"absolute",left:l,top:tp,width:s,height:s,borderRadius:"50%",background:c,opacity:0.06,filter:"blur(60px)",pointerEvents:"none" }} />
       ))}
+      {/* Lang toggle */}
       <div style={{ position:"absolute",top:20,right:24,display:"flex",gap:4 }}>
         {[["en","EN"],["hu","HU"]].map(([code,label])=>(
           <button key={code} onClick={()=>setUiLang(code)} style={{ padding:"5px 12px",borderRadius:8,border:`1px solid ${uiLang===code?"#0D9488":"rgba(255,255,255,0.15)"}`,background:uiLang===code?"rgba(13,148,136,0.2)":"transparent",color:uiLang===code?"#5EEAD4":"#64748B",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>{label}</button>
@@ -524,12 +547,16 @@ function LoginScreen({ onLogin }) {
 // ═══════════════════════════════════════════════════════════
 function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
   const C   = THEMES[darkMode?"dark":"light"];
+  // UI language: from user preference, or browser, defaults en
   const [uiLang,setUiLang]     = useState(user.language_pref||"en");
-  // ── chatLang: EXPLICIT user choice — never auto-detected ──
+  // chatLang = language the AI ALWAYS replies in (explicit, never auto-detected)
   const [chatLang,setChatLang] = useState(user.language_pref||"en");
   const [sidebarOpen,setSidebarOpen] = useState(false);
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   const t = T[uiLang]||T.en;
+  const isAdmin = user.role==="admin";
 
+  // ── Persist chat history in sessionStorage per user ───────
   const historyKey = `ua_chat_${user.email}`;
   const [messages,setMessages]   = useState(()=>{
     try { return JSON.parse(sessionStorage.getItem(historyKey)||"[]"); } catch{ return []; }
@@ -541,13 +568,16 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
   const [office,setOffice]       = useState("auto");
   const [sessionId]              = useState(()=>`s_${Date.now()}`);
 
+  // Save messages to sessionStorage whenever they change
   useEffect(()=>{
     try { sessionStorage.setItem(historyKey, JSON.stringify(messages.slice(-40))); } catch{}
   },[messages, historyKey]);
 
+  // Panel visibility
   const [showProgress,setShowProgress] = useState(false);
   const [showEvents,setShowEvents]     = useState(false);
   const [showMap,setShowMap]           = useState(false);
+  const [showSurvey,setShowSurvey]     = useState(false);
   const [showReplies,setShowReplies]   = useState(false);
   const [showOnboarding,setShowOnboarding] = useState(!user.onboarding_done);
   const [repliesCount,setRepliesCount] = useState(0);
@@ -557,6 +587,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[messages,loading]);
 
+  // Check for unread escalation replies
   useEffect(()=>{
     fetch(`${API}/escalations/student/${encodeURIComponent(user.email)}`)
       .then(r=>r.json()).then(d=>{ setRepliesCount((d.escalations||[]).filter(e=>e.admin_reply&&e.status==="replied").length); })
@@ -574,11 +605,17 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
 
   const sendMessage = async (text=input) => {
     const q = text.trim(); if(!q||loading) return;
+
+    // ── Language is set explicitly by the user toggle — no auto-detection ──
+    const lang = chatLang;
+
     setInput(""); setFollowups([]);
     const userMsg = {role:"user",content:q};
     setMessages(prev=>[...prev,userMsg]);
     setLoading(true);
     const newIdx = messages.length+1;
+
+    // Send last 10 messages as history (5 exchanges) for better context
     const history = messages.slice(-10).map(m=>({role:m.role,content:m.content}));
 
     try {
@@ -593,7 +630,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
           office,
           history,
           session_id:   sessionId,
-          reply_lang:   chatLang,   // always sends explicit user choice
+          reply_lang:   chatLang,
         }),
       });
       const data = await res.json();
@@ -601,7 +638,8 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
       const aiMsg = {role:"assistant",content:answer,office:data.office,office_name:data.office_name,office_emoji:data.office_emoji,question:q};
       setMessages(prev=>[...prev,aiMsg]);
       setNewMsgIdx(newIdx);
-      setFollowups(chatLang==="hu"
+      // Follow-up suggestions match the conversation language
+      setFollowups(lang==="hu"
         ?["Mondj többet erről","Mi a határidő?","Hogyan kell jelentkezni?"]
         :["Tell me more","What's the deadline?","How do I apply?"]
       );
@@ -625,19 +663,15 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
     {id:"library",label:"📖 Library"},
   ];
 
-  // ── Language toggle handler — sets both UI and chat lang ──
-  const handleLangChange = (code) => {
-    setUiLang(code);
-    setChatLang(code);
-  };
-
   return (
     <div style={{ display:"flex",height:"100vh",background:C.bg,color:C.text,fontFamily:"'IBM Plex Sans','Segoe UI',system-ui,sans-serif",overflow:"hidden",position:"relative" }}>
 
+      {/* Mobile overlay */}
       {sidebarOpen && <div onClick={()=>setSidebarOpen(false)} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:99,display:"none" }} className="mobile-overlay" />}
 
       {/* Sidebar */}
       <aside className={sidebarOpen?"sidebar-open":"sidebar-closed"} style={{ width:240,background:C.sidebar,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",flexShrink:0 }}>
+        {/* Brand */}
         <div style={{ padding:"20px 16px 16px",borderBottom:`1px solid ${C.border}` }}>
           <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12 }}>
             <div style={{ width:34,height:34,borderRadius:10,background:`linear-gradient(135deg,${C.accent},${C.accent2})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18 }}>🎓</div>
@@ -649,6 +683,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
           <button onClick={()=>{ setMessages([]); try{sessionStorage.removeItem(historyKey);}catch{} }} style={{ width:"100%",padding:"8px 12px",borderRadius:10,border:`1px solid ${C.border}`,background:"transparent",color:C.accent,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit" }}>{t.newChat}</button>
         </div>
 
+        {/* Quick nav */}
         <nav style={{ padding:"12px 10px" }}>
           {t.nav.map(({icon,label})=>(
             <div key={label} onClick={()=>sendMessage(t.navQuery(label))} style={{ display:"flex",alignItems:"center",gap:9,padding:"8px 10px",borderRadius:8,marginBottom:2,cursor:"pointer",fontSize:12,color:C.muted,transition:"all 0.15s" }}
@@ -659,11 +694,13 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
           ))}
         </nav>
 
+        {/* Feature buttons */}
         <div style={{ padding:"8px 10px",borderTop:`1px solid ${C.border}` }}>
           {[
             {icon:"📋",label:t.progress,  onClick:()=>setShowProgress(true)},
             {icon:"📅",label:t.events,    onClick:()=>setShowEvents(true)},
             {icon:"🗺️",label:t.map,       onClick:()=>setShowMap(true)},
+            {icon:"📝",label:"Take Survey", onClick:()=>setShowSurvey(true)},
             {icon:"📬",label:t.myReplies, onClick:()=>setShowReplies(true), badge:repliesCount},
           ].map(btn=>(
             <div key={btn.label} onClick={btn.onClick} style={{ display:"flex",alignItems:"center",gap:9,padding:"8px 10px",borderRadius:8,marginBottom:2,cursor:"pointer",fontSize:12,color:C.muted,transition:"all 0.15s",position:"relative" }}
@@ -675,20 +712,14 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
           ))}
         </div>
 
+        {/* Profile footer */}
         <div style={{ padding:"12px 16px",borderTop:`1px solid ${C.border}`,marginTop:"auto" }}>
-          {/* UI Language toggle */}
-          <div style={{ marginBottom:10 }}>
-            <div style={{ fontSize:10,color:C.muted,fontWeight:700,letterSpacing:"0.8px",marginBottom:6,textTransform:"uppercase" }}>🌐 Language</div>
-            <div style={{ display:"flex",gap:4 }}>
-              {[["en","🇬🇧 EN"],["hu","🇭🇺 HU"]].map(([code,label])=>(
-                <button key={code} onClick={()=>handleLangChange(code)} style={{ flex:1,padding:"6px 0",borderRadius:7,border:`1.5px solid ${chatLang===code?C.accent:C.border}`,background:chatLang===code?C.accent:"transparent",color:chatLang===code?"#fff":C.muted,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s" }}>{label}</button>
-              ))}
-            </div>
-            <div style={{ fontSize:10,color:C.accent,marginTop:5,textAlign:"center",fontWeight:600 }}>
-              {chatLang==="en" ? "✓ AI replies in English" : "✓ AI magyarul válaszol"}
-            </div>
+          {/* Lang toggle */}
+          <div style={{ display:"flex",gap:4,marginBottom:10 }}>
+            {[["en","EN"],["hu","HU"]].map(([code,label])=>(
+              <button key={code} onClick={()=>{setUiLang(code);setChatLang(code);}} style={{ flex:1,padding:"5px 0",borderRadius:7,border:`1px solid ${uiLang===code?C.accent:C.border}`,background:uiLang===code?`${C.accent}18`:"transparent",color:uiLang===code?C.accent:C.muted,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>{label}</button>
+            ))}
           </div>
-
           <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:10 }}>
             <div style={{ width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,${C.accent},${C.accent2})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#fff",flexShrink:0 }}>
               {user.full_name?.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()}
@@ -698,6 +729,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
               <div style={{ fontSize:10,color:C.muted }}>{user.major||user.department}</div>
             </div>
           </div>
+          {/* Nationality / year info badge */}
           {user.nationality && (
             <div style={{ fontSize:10,color:C.muted,background:C.badge,borderRadius:6,padding:"3px 8px",marginBottom:8,textAlign:"center" }}>
               {user.nationality} · {user.year_of_study||"Staff"}
@@ -722,18 +754,13 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
               <div style={{ fontSize:11,color:C.muted }}>{t.topbarSub}</div>
             </div>
           </div>
-          <div style={{ display:"flex",alignItems:"center",gap:8 }}>
-            {/* Language indicator in topbar */}
-            <div style={{ fontSize:11,fontWeight:700,color:C.accent,background:`${C.accent}15`,border:`1px solid ${C.accent}33`,borderRadius:20,padding:"3px 10px" }}>
-              {chatLang==="en" ? "🇬🇧 EN" : "🇭🇺 HU"}
-            </div>
-            <div style={{ display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#059669",background:"#F0FDF4",border:"1px solid #A7F3D0",borderRadius:20,padding:"4px 12px" }}>
-              <div style={{ width:6,height:6,borderRadius:"50%",background:"#059669",animation:"pulse 2s infinite" }} />
-              {t.online}
-            </div>
+          <div style={{ display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#059669",background:"#F0FDF4",border:"1px solid #A7F3D0",borderRadius:20,padding:"4px 12px" }}>
+            <div style={{ width:6,height:6,borderRadius:"50%",background:"#059669",animation:"pulse 2s infinite" }} />
+            {t.online}
           </div>
         </div>
 
+        {/* Announcement banner */}
         <AnnouncementBanner C={C} userEmail={user.email} />
 
         {/* Office pills */}
@@ -750,6 +777,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
               <div style={{ fontSize:48,marginBottom:12 }}>🎓</div>
               <div style={{ fontSize:20,fontWeight:700,color:C.text,marginBottom:6 }}>{t.welcomeHi(user.full_name?.split(" ")[0]||"there")}</div>
               <div style={{ fontSize:14,color:C.muted,marginBottom:6 }}>{t.welcomeSub}</div>
+              {/* Profile context badge */}
               {user.major && (
                 <div style={{ display:"inline-flex",gap:6,alignItems:"center",background:`${C.accent}10`,border:`1px solid ${C.accent}30`,borderRadius:20,padding:"5px 14px",marginBottom:24,fontSize:12,color:C.accent }}>
                   <span>📚 {user.major}</span>
@@ -785,35 +813,27 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
           <div ref={bottomRef} />
         </div>
 
-        {/* Input area */}
+        {/* Input */}
         <div style={{ padding:"10px 24px 16px",borderTop:`1px solid ${C.border}`,background:C.surface,flexShrink:0 }}>
-
-          {/* ── LANGUAGE TOGGLE — prominent, above input ── */}
-          <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:10,padding:"8px 12px",background:darkMode?"rgba(255,255,255,0.03)":"rgba(0,0,0,0.02)",borderRadius:10,border:`1px solid ${C.border}` }}>
-            <span style={{ fontSize:11,color:C.muted,fontWeight:700,letterSpacing:"0.5px",whiteSpace:"nowrap" }}>
-              🌐 AI REPLY LANGUAGE:
+          {/* AI Reply Language toggle */}
+          <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap" }}>
+            <span style={{ fontSize:11,color:C.muted,fontWeight:600 }}>
+              {chatLang==="en" ? "🤖 AI replies in:" : "🤖 AI válaszol:"}
             </span>
-            <div style={{ display:"flex",gap:6,flex:1 }}>
-              {[{code:"en",flag:"🇬🇧",label:"English"},{code:"hu",flag:"🇭🇺",label:"Magyar"}].map(({code,flag,label})=>(
-                <button key={code} onClick={()=>handleLangChange(code)}
-                  style={{
-                    padding:"5px 16px",borderRadius:20,
-                    border:`2px solid ${chatLang===code?C.accent:C.border}`,
-                    background:chatLang===code?C.accent:"transparent",
-                    color:chatLang===code?"#fff":C.muted,
-                    fontSize:12,fontWeight:700,cursor:"pointer",
-                    fontFamily:"inherit",transition:"all 0.15s",
-                    display:"flex",alignItems:"center",gap:5
-                  }}>
-                  {flag} {label} {chatLang===code && "✓"}
-                </button>
-              ))}
-            </div>
-            <span style={{ fontSize:10,color:C.accent,fontWeight:600,whiteSpace:"nowrap" }}>
-              {chatLang==="en" ? "Locked to English" : "Magyar nyelvre zárva"}
+            {[{code:"en",label:"🇬🇧 English"},{code:"hu",label:"🇭🇺 Magyar"}].map(({code,label})=>(
+              <button key={code} onClick={()=>setChatLang(code)}
+                style={{ padding:"3px 12px",borderRadius:20,
+                  border:`1.5px solid ${chatLang===code?C.accent:C.border}`,
+                  background:chatLang===code?`${C.accent}18`:"transparent",
+                  color:chatLang===code?C.accent:C.muted,
+                  fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s" }}>
+                {label}
+              </button>
+            ))}
+            <span style={{ fontSize:10,color:C.muted,marginLeft:"auto",fontStyle:"italic" }}>
+              {chatLang==="en" ? "AI always replies in English" : "Az AI mindig magyarul válaszol"}
             </span>
           </div>
-
           <div style={{ display:"flex",gap:8,alignItems:"flex-end" }}>
             <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} placeholder={t.placeholder} rows={1}
               onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}}
@@ -829,11 +849,13 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
         </div>
       </div>
 
+      {/* Panels */}
       {showOnboarding && <OnboardingModal C={C} uiLang={uiLang} onDone={handleOnboardingDone} />}
       {showProgress   && <ProgressPanel  C={C} user={user} uiLang={uiLang} onClose={()=>setShowProgress(false)} />}
       {showEvents     && <EventsPanel    C={C} uiLang={uiLang} onClose={()=>setShowEvents(false)} />}
       {showMap        && <CampusMapPanel C={C} uiLang={uiLang} onClose={()=>setShowMap(false)} />}
       {showReplies    && <RepliesPanel   C={C} user={user} uiLang={uiLang} onClose={()=>setShowReplies(false)} />}
+      {showSurvey     && <SurveyPanel    C={C} user={user} onClose={()=>setShowSurvey(false)} />}
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
@@ -843,14 +865,30 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
         *{box-sizing:border-box;margin:0;padding:0;}
         ::-webkit-scrollbar{width:4px;}
         ::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:10px;}
+
+        /* ── Mobile responsive ── */
         @media(max-width:767px){
-          .sidebar-closed{position:fixed!important;left:-260px!important;top:0;bottom:0;z-index:100;transition:left 0.25s ease;}
-          .sidebar-open{position:fixed!important;left:0!important;top:0;bottom:0;z-index:100;transition:left 0.25s ease;}
-          .mobile-overlay{display:block!important;}
-          .hamburger-btn{display:block!important;}
+          .sidebar-closed{
+            position:fixed!important;
+            left:-260px!important;
+            top:0;bottom:0;
+            z-index:100;
+            transition:left 0.25s ease;
+            box-shadow:4px 0 24px rgba(0,0,0,0.18);
+          }
+          .sidebar-open{
+            position:fixed!important;
+            left:0!important;
+            top:0;bottom:0;
+            z-index:100;
+            transition:left 0.25s ease;
+            box-shadow:4px 0 24px rgba(0,0,0,0.18);
+          }
+          .mobile-overlay{ display:block!important; }
+          .hamburger-btn{ display:block!important; }
         }
         @media(min-width:768px){
-          .sidebar-closed,.sidebar-open{position:relative!important;left:0!important;}
+          .sidebar-closed,.sidebar-open{ position:relative!important;left:0!important; }
         }
       `}</style>
     </div>
@@ -865,6 +903,7 @@ export default function App() {
   const [token,setToken]       = useState(()=>TokenStore.get());
   const [darkMode,setDarkMode] = useState(false);
 
+  // Auto-restore session on mount
   useEffect(()=>{
     const saved = TokenStore.get();
     if(saved&&!user) {
