@@ -283,7 +283,7 @@ def root():
         return FileResponse(index, media_type="text/html")
     return {"status": "UniAdvisor AI v3.0 running — frontend not built yet"}
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health():
     return {"status": "ok", "supabase": SUPABASE_AVAILABLE, "bcrypt": BCRYPT_AVAILABLE}
 
