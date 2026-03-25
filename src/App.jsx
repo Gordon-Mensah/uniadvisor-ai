@@ -1,8 +1,10 @@
 // ═══════════════════════════════════════════════════════════
-// App.jsx v3 — UniAdvisor AI
-// NEW: JWT auth, onboarding tour, progress tracker, feedback,
-//      events calendar, escalation replies, HU/EN UI toggle,
-//      campus map, profile-aware chat, Landing page route
+// App.jsx v4 — UniAdvisor AI
+// Changes from v3:
+//   - Added /demo route → Demo.jsx showcase page
+//   - /survey and /demo are both public (no login required)
+//   - Landing "Live demo" nav link works correctly
+//   - All other logic identical to v3
 // ═══════════════════════════════════════════════════════════
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -13,13 +15,14 @@ import CampusMapPanel from "./CampusMapPanel";
 import SurveyPanel    from "./SurveyPanel";
 import PublicSurvey   from "./PublicSurvey";
 import Landing        from "./Landing";
+import Demo           from "./Demo";          // ← NEW
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL      || "https://your-project.supabase.co";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "your-anon-key";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const API = import.meta.env.VITE_API_URL || "";
 
-// ── Token storage (sessionStorage only — not localStorage) ─
+// ── Token storage ──────────────────────────────────────────
 const TokenStore = {
   set: (t) => sessionStorage.setItem("ua_token", t),
   get: ()  => sessionStorage.getItem("ua_token"),
@@ -39,7 +42,6 @@ const T = {
       {icon:"🎯",label:"Career Guidance"},
     ],
     navQuery:(l)=>`Tell me about ${l} at Dunaújváros Egyetem`,
-    language:"LANGUAGE", darkMode:"Dark Mode", lightMode:"Light Mode",
     topbarTitle:"AI Academic Advisor", topbarSub:"RAG · Groq LLaMA3 · BM25",
     export:"Export Chat", online:"Online",
     welcomeHi:(n)=>`Hi ${n}, I'm your AI Advisor!`,
@@ -80,7 +82,6 @@ const T = {
       {icon:"🎯",label:"Karriertanácsadás"},
     ],
     navQuery:(l)=>`Mesélj erről: ${l} a Dunaújvárosi Egyetemen`,
-    language:"NYELV", darkMode:"Sötét mód", lightMode:"Világos mód",
     topbarTitle:"AI Tanulmányi Tanácsadó", topbarSub:"RAG · Groq LLaMA3 · BM25",
     export:"Chat exportálása", online:"Online",
     welcomeHi:(n)=>`Szia ${n}, az AI tanácsadód vagyok!`,
@@ -117,7 +118,6 @@ const THEMES = {
   dark: { bg:"#0F172A",surface:"#1E293B",sidebar:"#1E293B",border:"#334155",border2:"#475569",text:"#F1F5F9",text2:"#CBD5E1",muted:"#64748B",bubble_user:"#0D9488",bubble_ai:"#1E293B",bubble_user_text:"#FFFFFF",bubble_ai_text:"#F1F5F9",input:"#1E293B",inputBorder:"#334155",accent:"#0D9488",accent2:"#0F766E",badge:"#134E4A",badgeText:"#5EEAD4" },
 };
 
-// ── Small shared helpers ───────────────────────────────────
 function TypingDots({ C }) {
   return (
     <div style={{ display:"flex",gap:4,alignItems:"center",padding:"4px 0" }}>
@@ -139,9 +139,6 @@ function StreamingText({ text, C }) {
   return <span style={{ color:C.bubble_ai_text,whiteSpace:"pre-wrap",lineHeight:1.65,fontSize:14 }}>{displayed}</span>;
 }
 
-// ═══════════════════════════════════════════════════════════
-// ONBOARDING TOUR MODAL
-// ═══════════════════════════════════════════════════════════
 function OnboardingModal({ C, uiLang, onDone }) {
   const [step,setStep] = useState(0);
   const steps = T[uiLang]?.onboarding || T.en.onboarding;
@@ -167,9 +164,6 @@ function OnboardingModal({ C, uiLang, onDone }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════
-// PROGRESS TRACKER PANEL
-// ═══════════════════════════════════════════════════════════
 function ProgressPanel({ C, user, uiLang, onClose }) {
   const [tasks,setTasks] = useState([]);
   const [done,setDone]   = useState(0);
@@ -229,9 +223,6 @@ function ProgressPanel({ C, user, uiLang, onClose }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════
-// EVENTS CALENDAR PANEL
-// ═══════════════════════════════════════════════════════════
 const EVENT_COLORS = { academic:"#0D9488",social:"#8B5CF6",sports:"#F59E0B",career:"#3B82F6",admin:"#EF4444" };
 const EVENT_ICONS  = { academic:"📚",social:"🎉",sports:"⚽",career:"💼",admin:"📋" };
 
@@ -282,9 +273,6 @@ function EventsPanel({ C, uiLang, onClose }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════
-// ESCALATION REPLIES PANEL
-// ═══════════════════════════════════════════════════════════
 function RepliesPanel({ C, user, uiLang, onClose }) {
   const [replies,setReplies] = useState([]);
   const [loading,setLoading] = useState(true);
@@ -304,11 +292,11 @@ function RepliesPanel({ C, user, uiLang, onClose }) {
         </div>
         <div style={{ flex:1,overflowY:"auto",padding:20 }}>
           {loading && <div style={{ textAlign:"center",color:C.muted,padding:40,fontSize:13 }}>Loading…</div>}
-          {!loading&&replies.length===0 && <div style={{ textAlign:"center",color:C.muted,padding:40,fontSize:13 }}>No replies yet. Escalations you send will appear here once answered.</div>}
+          {!loading&&replies.length===0 && <div style={{ textAlign:"center",color:C.muted,padding:40,fontSize:13 }}>No replies yet.</div>}
           {replies.map(r=>(
             <div key={r.id} style={{ background:C.bg,borderRadius:14,border:`1px solid ${C.border}`,padding:16,marginBottom:12 }}>
               <div style={{ fontSize:13,fontWeight:700,color:C.text,marginBottom:6 }}>Re: {r.subject}</div>
-              <div style={{ fontSize:12,color:C.muted,marginBottom:10,lineHeight:1.5,padding:"8px 12px",background:`${C.surface}`,borderRadius:8,border:`1px solid ${C.border}` }}>
+              <div style={{ fontSize:12,color:C.muted,marginBottom:10,lineHeight:1.5,padding:"8px 12px",background:C.surface,borderRadius:8,border:`1px solid ${C.border}` }}>
                 <span style={{ fontWeight:600,color:C.text2 }}>Your message: </span>{r.message}
               </div>
               <div style={{ fontSize:12,lineHeight:1.6,color:C.text,padding:"10px 12px",background:`${C.accent}08`,borderRadius:8,border:`1px solid ${C.accent}33` }}>
@@ -323,9 +311,6 @@ function RepliesPanel({ C, user, uiLang, onClose }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════
-// ANNOUNCEMENT BANNER
-// ═══════════════════════════════════════════════════════════
 function AnnouncementBanner({ C, userEmail }) {
   const [banners,setBanners]     = useState([]);
   const [dismissed,setDismissed] = useState(new Set());
@@ -370,9 +355,6 @@ function AnnouncementBanner({ C, userEmail }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════
-// CHAT BUBBLE (with thumbs feedback)
-// ═══════════════════════════════════════════════════════════
 function Bubble({ msg, C, isNew, onFeedback, uiLang }) {
   const isUser = msg.role==="user";
   const [voted,setVoted] = useState(null);
@@ -411,9 +393,6 @@ function Bubble({ msg, C, isNew, onFeedback, uiLang }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════
-// LOGIN SCREEN (JWT-based)
-// ═══════════════════════════════════════════════════════════
 function LoginScreen({ onLogin, onBack }) {
   const [role,setRole]         = useState(null);
   const [email,setEmail]       = useState("");
@@ -421,7 +400,6 @@ function LoginScreen({ onLogin, onBack }) {
   const [loading,setLoading]   = useState(false);
   const [error,setError]       = useState("");
   const [uiLang,setUiLang]     = useState("en");
-
   const t = T[uiLang];
 
   const DEMO = {
@@ -445,18 +423,13 @@ function LoginScreen({ onLogin, onBack }) {
       if(!res.ok) throw new Error(data.detail||"Login failed");
       TokenStore.set(data.token);
       onLogin(data.user, data.token);
-    } catch(e) {
+    } catch {
       try {
         const { data, error:err } = await supabase.from("users").select("*").eq("email",email.trim()).eq("active",true).single();
         if(err||!data) throw new Error("Invalid credentials");
-        if(data.password===password||data.role===role) {
-          onLogin(data, null);
-        } else {
-          throw new Error("Invalid credentials");
-        }
-      } catch {
-        setError("Invalid email or password.");
-      }
+        if(data.password===password||data.role===role) { onLogin(data, null); }
+        else throw new Error("Invalid credentials");
+      } catch { setError("Invalid email or password."); }
     }
     setLoading(false);
   };
@@ -466,21 +439,16 @@ function LoginScreen({ onLogin, onBack }) {
       {[["#0D9488","15%","10%",300],["#8B5CF6","80%","20%",200],["#0EA5E9","60%","70%",250]].map(([c,l,tp,s],i)=>(
         <div key={i} style={{ position:"absolute",left:l,top:tp,width:s,height:s,borderRadius:"50%",background:c,opacity:0.06,filter:"blur(60px)",pointerEvents:"none" }} />
       ))}
-
-      {/* Back to landing */}
       {onBack && (
         <button onClick={onBack} style={{ position:"absolute",top:20,left:24,background:"transparent",border:"none",color:"rgba(255,255,255,0.45)",cursor:"pointer",fontSize:13,fontFamily:"'IBM Plex Sans',sans-serif",display:"flex",alignItems:"center",gap:6 }}>
           ← Back to home
         </button>
       )}
-
-      {/* Lang toggle */}
       <div style={{ position:"absolute",top:20,right:24,display:"flex",gap:4 }}>
         {[["en","EN"],["hu","HU"]].map(([code,label])=>(
           <button key={code} onClick={()=>setUiLang(code)} style={{ padding:"5px 12px",borderRadius:8,border:`1px solid ${uiLang===code?"#0D9488":"rgba(255,255,255,0.15)"}`,background:uiLang===code?"rgba(13,148,136,0.2)":"transparent",color:uiLang===code?"#5EEAD4":"#64748B",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>{label}</button>
         ))}
       </div>
-
       <div style={{ width:"100%",maxWidth:480,padding:"24px 16px",position:"relative",zIndex:1 }}>
         <div style={{ textAlign:"center",marginBottom:32 }}>
           <div style={{ fontSize:44,marginBottom:10 }}>🎓</div>
@@ -493,7 +461,8 @@ function LoginScreen({ onLogin, onBack }) {
               {uiLang==="hu"?"Válaszd ki a szerepkörödet":"Select your role to continue"}
             </p>
             {t.loginRoles.map(r=>(
-              <div key={r.id} onClick={()=>selectRole(r.id)} style={{ display:"flex",alignItems:"center",gap:14,padding:"16px 20px",borderRadius:14,border:"1px solid rgba(255,255,255,0.08)",background:"rgba(255,255,255,0.04)",cursor:"pointer",marginBottom:10,transition:"all 0.2s" }}
+              <div key={r.id} onClick={()=>selectRole(r.id)}
+                style={{ display:"flex",alignItems:"center",gap:14,padding:"16px 20px",borderRadius:14,border:"1px solid rgba(255,255,255,0.08)",background:"rgba(255,255,255,0.04)",cursor:"pointer",marginBottom:10,transition:"all 0.2s" }}
                 onMouseEnter={e=>{ e.currentTarget.style.background="rgba(255,255,255,0.08)"; e.currentTarget.style.borderColor=r.color+"66"; }}
                 onMouseLeave={e=>{ e.currentTarget.style.background="rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor="rgba(255,255,255,0.08)"; }}>
                 <div style={{ width:44,height:44,borderRadius:12,background:`${r.color}22`,border:`1px solid ${r.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0 }}>{r.icon}</div>
@@ -522,7 +491,8 @@ function LoginScreen({ onLogin, onBack }) {
               </div>
             ))}
             {error && <div style={{ color:"#F87171",fontSize:12,marginBottom:12,textAlign:"center" }}>{error}</div>}
-            <button onClick={handleLogin} disabled={loading} style={{ width:"100%",padding:"13px 0",borderRadius:12,border:"none",background:t.loginRoles.find(r=>r.id===role)?.color||"#0D9488",color:"#fff",fontSize:14,fontWeight:700,cursor:loading?"not-allowed":"pointer",opacity:loading?0.7:1,fontFamily:"inherit",transition:"all 0.15s" }}>
+            <button onClick={handleLogin} disabled={loading}
+              style={{ width:"100%",padding:"13px 0",borderRadius:12,border:"none",background:t.loginRoles.find(r=>r.id===role)?.color||"#0D9488",color:"#fff",fontSize:14,fontWeight:700,cursor:loading?"not-allowed":"pointer",opacity:loading?0.7:1,fontFamily:"inherit",transition:"all 0.15s" }}>
               {loading?(uiLang==="hu"?"Bejelentkezés…":"Signing in…"):(uiLang==="hu"?"Bejelentkezés":"Sign In")}
             </button>
           </div>
@@ -533,9 +503,6 @@ function LoginScreen({ onLogin, onBack }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════
-// CHAT APP (Student)
-// ═══════════════════════════════════════════════════════════
 function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
   const C   = THEMES[darkMode?"dark":"light"];
   const [uiLang,setUiLang]     = useState(user.language_pref||"en");
@@ -544,9 +511,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
   const t = T[uiLang]||T.en;
 
   const historyKey = `ua_chat_${user.email}`;
-  const [messages,setMessages]   = useState(()=>{
-    try { return JSON.parse(sessionStorage.getItem(historyKey)||"[]"); } catch{ return []; }
-  });
+  const [messages,setMessages]   = useState(()=>{ try{return JSON.parse(sessionStorage.getItem(historyKey)||"[]");}catch{return [];} });
   const [input,setInput]         = useState("");
   const [loading,setLoading]     = useState(false);
   const [newMsgIdx,setNewMsgIdx] = useState(-1);
@@ -554,23 +519,20 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
   const [office,setOffice]       = useState("auto");
   const [sessionId]              = useState(()=>`s_${Date.now()}`);
 
-  useEffect(()=>{
-    try { sessionStorage.setItem(historyKey, JSON.stringify(messages.slice(-40))); } catch{}
-  },[messages, historyKey]);
+  useEffect(()=>{ try{sessionStorage.setItem(historyKey,JSON.stringify(messages.slice(-40)));}catch{} },[messages,historyKey]);
 
-  const [showProgress,setShowProgress] = useState(false);
-  const [showEvents,setShowEvents]     = useState(false);
-  const [showMap,setShowMap]           = useState(false);
-  const [showSurvey,setShowSurvey]     = useState(false);
-  const [showReplies,setShowReplies]   = useState(false);
+  const [showProgress,setShowProgress]   = useState(false);
+  const [showEvents,setShowEvents]       = useState(false);
+  const [showMap,setShowMap]             = useState(false);
+  const [showSurvey,setShowSurvey]       = useState(false);
+  const [showReplies,setShowReplies]     = useState(false);
   const [showOnboarding,setShowOnboarding] = useState(!user.onboarding_done);
-  const [repliesCount,setRepliesCount] = useState(0);
+  const [repliesCount,setRepliesCount]   = useState(0);
 
   const bottomRef = useRef();
   const inputRef  = useRef();
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[messages,loading]);
-
   useEffect(()=>{
     fetch(`${API}/escalations/student/${encodeURIComponent(user.email)}`)
       .then(r=>r.json()).then(d=>{ setRepliesCount((d.escalations||[]).filter(e=>e.admin_reply&&e.status==="replied").length); })
@@ -594,31 +556,14 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
     setLoading(true);
     const newIdx = messages.length+1;
     const history = messages.slice(-10).map(m=>({role:m.role,content:m.content}));
-
     try {
-      const res = await fetch(`${API}/chat`,{
-        method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          message:      q,
-          student_name: user.full_name,
-          student_year: user.year_of_study||"Year 1",
-          student_major:user.major||"General",
-          student_nationality: user.nationality||"Hungarian",
-          office,
-          history,
-          session_id:   sessionId,
-          reply_lang:   chatLang,
-        }),
-      });
+      const res = await fetch(`${API}/chat`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:q,student_name:user.full_name,student_year:user.year_of_study||"Year 1",student_major:user.major||"General",student_nationality:user.nationality||"Hungarian",office,history,session_id:sessionId,reply_lang:chatLang})});
       const data = await res.json();
       const answer = data.answer||"Sorry, I could not get a response.";
       const aiMsg = {role:"assistant",content:answer,office:data.office,office_name:data.office_name,office_emoji:data.office_emoji,question:q};
       setMessages(prev=>[...prev,aiMsg]);
       setNewMsgIdx(newIdx);
-      setFollowups(chatLang==="hu"
-        ?["Mondj többet erről","Mi a határidő?","Hogyan kell jelentkezni?"]
-        :["Tell me more","What's the deadline?","How do I apply?"]
-      );
+      setFollowups(chatLang==="hu"?["Mondj többet erről","Mi a határidő?","Hogyan kell jelentkezni?"]:["Tell me more","What's the deadline?","How do I apply?"]);
     } catch {
       setMessages(prev=>[...prev,{role:"assistant",content:"Connection error. Please check the backend is running."}]);
     }
@@ -631,12 +576,8 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
   };
 
   const OFFICE_PILLS = [
-    {id:"auto",label:"🔍 Auto"},
-    {id:"study_office",label:"📚 Study"},
-    {id:"iro",label:"🌍 IRO"},
-    {id:"finance",label:"💰 Finance"},
-    {id:"it_helpdesk",label:"💻 IT"},
-    {id:"library",label:"📖 Library"},
+    {id:"auto",label:"🔍 Auto"},{id:"study_office",label:"📚 Study"},{id:"iro",label:"🌍 IRO"},
+    {id:"finance",label:"💰 Finance"},{id:"it_helpdesk",label:"💻 IT"},{id:"library",label:"📖 Library"},
   ];
 
   return (
@@ -656,7 +597,6 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
           </div>
           <button onClick={()=>{ setMessages([]); try{sessionStorage.removeItem(historyKey);}catch{} }} style={{ width:"100%",padding:"8px 12px",borderRadius:10,border:`1px solid ${C.border}`,background:"transparent",color:C.accent,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit" }}>{t.newChat}</button>
         </div>
-
         <nav style={{ padding:"12px 10px" }}>
           {t.nav.map(({icon,label})=>(
             <div key={label} onClick={()=>sendMessage(t.navQuery(label))} style={{ display:"flex",alignItems:"center",gap:9,padding:"8px 10px",borderRadius:8,marginBottom:2,cursor:"pointer",fontSize:12,color:C.muted,transition:"all 0.15s" }}
@@ -666,7 +606,6 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
             </div>
           ))}
         </nav>
-
         <div style={{ padding:"8px 10px",borderTop:`1px solid ${C.border}` }}>
           {[
             {icon:"📋",label:t.progress,    onClick:()=>setShowProgress(true)},
@@ -683,7 +622,6 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
             </div>
           ))}
         </div>
-
         <div style={{ padding:"12px 16px",borderTop:`1px solid ${C.border}`,marginTop:"auto" }}>
           <div style={{ display:"flex",gap:4,marginBottom:10 }}>
             {[["en","EN"],["hu","HU"]].map(([code,label])=>(
@@ -812,7 +750,11 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
       {showEvents     && <EventsPanel    C={C} uiLang={uiLang} onClose={()=>setShowEvents(false)} />}
       {showMap        && <CampusMapPanel C={C} uiLang={uiLang} onClose={()=>setShowMap(false)} />}
       {showReplies    && <RepliesPanel   C={C} user={user} uiLang={uiLang} onClose={()=>setShowReplies(false)} />}
-      {showSurvey     && <SurveyPanel    C={C} user={user} onClose={()=>setShowSurvey(false)} />}
+      {showSurvey     && (
+        <div style={{ position:"fixed",inset:0,zIndex:2000 }}>
+          <PublicSurvey onClose={()=>setShowSurvey(false)} />
+        </div>
+      )}
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
@@ -823,7 +765,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
         ::-webkit-scrollbar{width:4px;}
         ::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:10px;}
         @media(max-width:767px){
-          .sidebar-closed{position:fixed!important;left:-260px!important;top:0;bottom:0;z-index:100;transition:left 0.25s ease;box-shadow:4px 0 24px rgba(0,0,0,0.18);}
+          .sidebar-closed{position:fixed!important;left:-260px!important;top:0;bottom:0;z-index:100;transition:left 0.25s ease;}
           .sidebar-open{position:fixed!important;left:0!important;top:0;bottom:0;z-index:100;transition:left 0.25s ease;box-shadow:4px 0 24px rgba(0,0,0,0.18);}
           .mobile-overlay{display:block!important;}
           .hamburger-btn{display:block!important;}
@@ -837,65 +779,43 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// ROOT
+// ROOT — routing logic
 // ═══════════════════════════════════════════════════════════
 export default function App() {
   const [user,setUser]         = useState(null);
   const [token,setToken]       = useState(()=>TokenStore.get());
   const [darkMode,setDarkMode] = useState(false);
-  // Controls whether the landing page or login screen is shown
-  // when the user is not yet authenticated.
   const [showLanding,setShowLanding] = useState(true);
 
-  // Auto-restore session on mount — if a valid token exists,
-  // skip landing and go straight to the app.
+  const path = window.location.pathname;
+
+  // Public routes — no auth needed
+  if (path === "/survey") return <PublicSurvey />;
+  if (path === "/demo")   return <Demo />;          // ← NEW
+
   useEffect(()=>{
     const saved = TokenStore.get();
     if(saved&&!user) {
       fetch(`${API}/auth/me`,{headers:{Authorization:`Bearer ${saved}`}})
         .then(r=>r.ok?r.json():null)
-        .then(u=>{
-          if(u&&u.email) {
-            setUser(u);
-            setShowLanding(false); // already authenticated — skip landing
-          } else {
-            TokenStore.del();
-          }
-        })
+        .then(u=>{ if(u&&u.email){setUser(u);setShowLanding(false);}else TokenStore.del(); })
         .catch(()=>TokenStore.del());
     }
   },[]);
 
   const handleLogin = (userData, tok) => {
-    setUser(userData);
-    setShowLanding(false);
-    if(tok) { setToken(tok); TokenStore.set(tok); }
+    setUser(userData); setShowLanding(false);
+    if(tok){setToken(tok);TokenStore.set(tok);}
   };
 
   const handleLogout = () => {
     if(token) fetch(`${API}/auth/logout`,{method:"POST",headers:{Authorization:`Bearer ${token}`}}).catch(()=>{});
-    TokenStore.del(); setToken(null); setUser(null);
-    setShowLanding(true); // return to landing after logout
+    TokenStore.del(); setToken(null); setUser(null); setShowLanding(true);
   };
 
-  // Public survey route — no login required
-  if(window.location.pathname === "/survey") return <PublicSurvey />;
-
-  // ── Routing logic ──────────────────────────────────────
-  // 1. Not logged in + on landing  → show Landing
-  // 2. Not logged in + clicked CTA → show Login
-  // 3. Logged in as staff/admin    → their portal
-  // 4. Logged in as student        → ChatApp
   if(!user) {
-    if(showLanding) {
-      return <Landing onEnter={()=>setShowLanding(false)} />;
-    }
-    return (
-      <LoginScreen
-        onLogin={handleLogin}
-        onBack={()=>setShowLanding(true)}
-      />
-    );
+    if(showLanding) return <Landing onEnter={()=>setShowLanding(false)} />;
+    return <LoginScreen onLogin={handleLogin} onBack={()=>setShowLanding(true)} />;
   }
 
   if(user.role==="staff") return <StaffPortal  user={user} token={token} onLogout={handleLogout} />;

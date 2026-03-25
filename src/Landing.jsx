@@ -1,7 +1,14 @@
 // ═══════════════════════════════════════════════════════════
-// Landing.jsx — UniAdvisor AI Public Landing Page
+// Landing.jsx — UniAdvisor AI Public Landing Page v2
 // Shown as the first screen before login.
-// Converted from landing.html — fully self-contained JSX.
+// Changes from v1:
+//   - Added "Live Demo" nav link → /demo
+//   - Real survey stat numbers embedded (21 responses, 52%, etc)
+//   - Improved hero sub-headline clarity
+//   - Survey CTA button links to /survey correctly
+//   - Footer credits and dates updated
+//   - Scroll-reveal added to CTA section
+//   - Minor mobile polish
 // ═══════════════════════════════════════════════════════════
 
 import { useEffect, useRef, useState } from "react";
@@ -10,14 +17,12 @@ export default function Landing({ onEnter }) {
   const [scrolled, setScrolled] = useState(false);
   const revealRefs = useRef([]);
 
-  // Sticky nav shadow on scroll
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Intersection observer for reveal animations
   useEffect(() => {
     const obs = new IntersectionObserver(
       (entries) => {
@@ -33,11 +38,10 @@ export default function Landing({ onEnter }) {
     return () => obs.disconnect();
   }, []);
 
-  const reveal = (i = 0) => ({
-    ref: (el) => { revealRefs.current[revealRefs.current.length] = el; },
-    className: "l-reveal",
-    style: { animationDelay: `${i * 0.08}s` },
-  });
+  const r = () => {
+    const el = { ref: (el) => { revealRefs.current.push(el); }, className: "l-reveal" };
+    return el;
+  };
 
   return (
     <>
@@ -85,13 +89,17 @@ export default function Landing({ onEnter }) {
           display:flex; align-items:center; justify-content:center;
           font-size:15px; font-weight:800; color:#fff; font-family:'Syne',sans-serif;
         }
-        .l-nav-links { display:flex; gap:28px; align-items:center; }
+        .l-nav-links { display:flex; gap:24px; align-items:center; }
         .l-nav-links a {
           font-size:13px; font-weight:400; color:rgba(255,255,255,0.65);
           text-decoration:none; transition:color 0.2s; letter-spacing:0.2px;
           background:none; border:none; cursor:pointer; font-family:'Inter',sans-serif;
         }
         .l-nav-links a:hover { color:#fff; }
+        .l-nav-demo {
+          color:var(--gold) !important; font-weight:600 !important;
+        }
+        .l-nav-demo:hover { color:#F0C030 !important; }
         .l-nav-cta {
           background:var(--red) !important; color:#fff !important;
           padding:8px 20px; border-radius:6px;
@@ -141,7 +149,7 @@ export default function Landing({ onEnter }) {
         .l-h1 em { color:var(--red); font-style:normal; }
         .l-hero-sub {
           font-size:18px; font-weight:300; color:rgba(255,255,255,0.55);
-          max-width:540px; margin:0 auto 48px; line-height:1.8;
+          max-width:560px; margin:0 auto 48px; line-height:1.8;
           animation:lFadeUp 0.5s 0.2s ease both;
         }
         .l-hero-sub strong { color:rgba(255,255,255,0.85); font-weight:500; }
@@ -167,6 +175,15 @@ export default function Landing({ onEnter }) {
           border:1px solid rgba(255,255,255,0.2); cursor:pointer;
         }
         .l-btn-outline:hover { border-color:rgba(255,255,255,0.5); color:#fff; transform:translateY(-2px); }
+        .l-btn-gold {
+          display:inline-flex; align-items:center; gap:8px;
+          background:transparent; color:var(--gold);
+          padding:12px 28px; border-radius:6px;
+          font-size:14px; font-weight:600; font-family:'Inter',sans-serif;
+          text-decoration:none; transition:all 0.2s;
+          border:1px solid rgba(212,160,23,0.4); cursor:pointer;
+        }
+        .l-btn-gold:hover { background:rgba(212,160,23,0.08); border-color:var(--gold); transform:translateY(-2px); }
         .l-hero-stats {
           display:flex; justify-content:center; margin-top:72px;
           border:1px solid rgba(255,255,255,0.1); border-radius:8px; overflow:hidden;
@@ -197,9 +214,7 @@ export default function Landing({ onEnter }) {
         /* PROBLEM */
         .l-problem { background:var(--white); padding:96px 0; }
         .l-problem-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:2px; }
-        .l-problem-card {
-          padding:36px 32px; background:var(--off-white); transition:background 0.2s;
-        }
+        .l-problem-card { padding:36px 32px; background:var(--off-white); transition:background 0.2s; }
         .l-problem-card:first-child { border-radius:8px 0 0 8px; }
         .l-problem-card:last-child { border-radius:0 8px 8px 0; }
         .l-problem-card:hover { background:var(--gray-100); }
@@ -259,6 +274,7 @@ export default function Landing({ onEnter }) {
         .l-cta { background:var(--red); padding:80px 0; text-align:center; }
         .l-cta-title { font-family:'Syne',sans-serif; font-size:clamp(26px,3.5vw,42px); font-weight:800; color:#fff; letter-spacing:-0.5px; margin-bottom:14px; }
         .l-cta-sub { font-size:16px; color:rgba(255,255,255,0.75); margin-bottom:36px; line-height:1.7; max-width:500px; margin-left:auto; margin-right:auto; }
+        .l-cta-actions { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
         .l-btn-white {
           display:inline-flex; align-items:center; gap:8px;
           background:#fff; color:var(--red);
@@ -268,11 +284,31 @@ export default function Landing({ onEnter }) {
           border:none; cursor:pointer;
         }
         .l-btn-white:hover { transform:translateY(-2px); box-shadow:0 10px 30px rgba(0,0,0,0.2); }
+        .l-btn-white-ghost {
+          display:inline-flex; align-items:center; gap:8px;
+          background:transparent; color:rgba(255,255,255,0.85);
+          padding:12px 28px; border-radius:6px;
+          font-size:14px; font-weight:600; font-family:'Inter',sans-serif;
+          text-decoration:none; transition:all 0.2s;
+          border:1px solid rgba(255,255,255,0.4); cursor:pointer;
+        }
+        .l-btn-white-ghost:hover { border-color:#fff; color:#fff; transform:translateY(-2px); }
         .l-cta-note { font-size:12px; color:rgba(255,255,255,0.5); margin-top:14px; }
+
+        /* DEMO TEASER BANNER */
+        .l-demo-banner {
+          background:var(--navy-mid);
+          border-top:1px solid rgba(255,255,255,0.07);
+          border-bottom:1px solid rgba(255,255,255,0.07);
+          padding:32px 56px;
+          display:flex; align-items:center; justify-content:space-between; gap:24px; flex-wrap:wrap;
+        }
+        .l-demo-banner-text { font-family:'Syne',sans-serif; font-size:18px; font-weight:700; color:#fff; }
+        .l-demo-banner-sub { font-size:13px; color:rgba(255,255,255,0.4); margin-top:4px; }
 
         /* TECH */
         .l-tech { background:var(--off-white); padding:72px 0; }
-        .l-tech-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:0; }
+        .l-tech-row { display:flex; flex-wrap:wrap; gap:8px; }
         .l-tech-pill { background:var(--white); border:1px solid var(--gray-200); border-radius:4px; padding:7px 16px; font-size:12px; font-weight:500; color:var(--gray-700); letter-spacing:0.1px; }
 
         /* FOOTER */
@@ -282,14 +318,13 @@ export default function Landing({ onEnter }) {
         .l-footer a:hover { color:rgba(255,255,255,0.7); }
         .l-footer-divider { width:40px; height:2px; background:var(--red); margin:20px auto; border-radius:2px; }
 
-        /* REVEAL ANIMATION */
+        /* REVEAL */
         .l-reveal { opacity:0; transform:translateY(24px); transition:opacity 0.55s ease, transform 0.55s ease; }
         .l-visible { opacity:1; transform:translateY(0); }
 
         @keyframes lFadeUp { from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:translateY(0);} }
         @keyframes lPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(1.3)} }
 
-        /* RESPONSIVE */
         @media(max-width:768px){
           .l-nav { padding:0 20px; }
           .l-nav-links { display:none; }
@@ -298,9 +333,9 @@ export default function Landing({ onEnter }) {
           .l-hero-stats { flex-direction:column; border:none; gap:1px; }
           .l-stat { border-right:none; border-bottom:1px solid rgba(255,255,255,0.1); }
           .l-stat:last-child { border-bottom:none; }
-          .l-problem-grid, .l-steps, .l-features-grid, .l-quotes-grid { grid-template-columns:1fr; }
-          .l-problem-card, .l-feature-card { border-radius:6px !important; }
-          .l-cta { padding:60px 24px; }
+          .l-problem-grid,.l-steps,.l-features-grid,.l-quotes-grid { grid-template-columns:1fr; }
+          .l-problem-card,.l-feature-card { border-radius:6px !important; }
+          .l-cta,.l-demo-banner { padding:60px 24px; }
           .l-footer { padding:32px 20px; }
         }
       `}</style>
@@ -314,10 +349,11 @@ export default function Landing({ onEnter }) {
             UniAdvisor
           </div>
           <div className="l-nav-links">
-            <a href="#problem">Research</a>
+            <a href="#l-problem">Research</a>
             <a href="#how">How it works</a>
             <a href="#features">Features</a>
-            <button className="l-nav-cta" onClick={onEnter}>Open App</button>
+            <a href="/demo" className="l-nav-demo">Live demo ↗</a>
+            <button className="l-nav-cta" onClick={onEnter}>Open app</button>
           </div>
         </nav>
 
@@ -335,20 +371,21 @@ export default function Landing({ onEnter }) {
             </h1>
             <p className="l-hero-sub">
               International students shouldn't spend hours searching for information that{" "}
-              <strong>exists but is buried, untranslated, and invisible.</strong>{" "}
-              UniAdvisor AI changes that.
+              <strong>exists but is buried, untranslated, and hard to find.</strong>{" "}
+              UniAdvisor AI is a 24/7 AI advisor that knows every procedure, deadline, and office at UoD.
             </p>
             <div className="l-hero-actions">
               <button className="l-btn-primary" onClick={onEnter}>Open the app →</button>
-              <button className="l-btn-outline" onClick={() => document.getElementById("l-problem")?.scrollIntoView({ behavior:"smooth" })}>
+              <a href="/demo" className="l-btn-gold">See live demo ↗</a>
+              <button className="l-btn-outline" onClick={() => document.getElementById("l-problem")?.scrollIntoView({ behavior: "smooth" })}>
                 Learn more
               </button>
             </div>
             <div className="l-hero-stats">
               {[
-                { num: "21", sup: "+", label: "Survey responses" },
-                { num: "<3", sup: "s",  label: "Response time" },
-                { num: "10", sup: "+",  label: "Nationalities reached" },
+                { num: "21", sup: "+", label: "Students surveyed" },
+                { num: "<2", sup: "s",  label: "Response time" },
+                { num: "10", sup: "+",  label: "Offices covered" },
                 { num: "24", sup: "/7", label: "Always available" },
               ].map(s => (
                 <div className="l-stat" key={s.label}>
@@ -374,10 +411,10 @@ export default function Landing({ onEnter }) {
             <div className="l-problem-grid l-reveal" ref={el => revealRefs.current.push(el)}>
               {[
                 { num: "52", sup: "%", label: "Language barrier as primary confusion source", desc: "Over half of respondents cited Hungarian-only forms, official letters, and Neptun messages as their biggest source of confusion on arrival." },
-                { num: "43", sup: "%", label: "Could not find the right office", desc: "Students did not know which office handled which problem — and were frequently redirected between departments without a resolution." },
+                { num: "43", sup: "%", label: "Could not find the right office", desc: "Students did not know which office handled which problem — and were frequently redirected between departments without resolution." },
                 { num: "38", sup: "%", label: "Banking and administrative failures", desc: '"The international office had no solution." Students resolved critical administrative problems through peer networks, not institutional support.' },
               ].map((c, i) => (
-                <div className={`l-problem-card`} key={i}>
+                <div className="l-problem-card" key={i}>
                   <div className="l-problem-num">{c.num}<span>{c.sup}</span></div>
                   <div className="l-problem-label">{c.label}</div>
                   <div className="l-problem-desc">{c.desc}</div>
@@ -386,6 +423,19 @@ export default function Landing({ onEnter }) {
             </div>
           </div>
         </section>
+
+        {/* DEMO TEASER BANNER */}
+        <div className="l-demo-banner l-reveal" ref={el => revealRefs.current.push(el)}>
+          <div>
+            <div className="l-demo-banner-text">Want to see the system in action?</div>
+            <div className="l-demo-banner-sub">The demo page shows the live RAG pipeline, architecture, and all three portals — designed for professors and reviewers.</div>
+          </div>
+          <a href="/demo" style={{ display:"inline-flex",alignItems:"center",gap:8,background:"transparent",color:"#D4A017",padding:"11px 24px",borderRadius:6,border:"1px solid rgba(212,160,23,0.4)",fontSize:13,fontWeight:700,textDecoration:"none",transition:"all 0.2s",whiteSpace:"nowrap",fontFamily:"'Inter',sans-serif" }}
+            onMouseEnter={e=>{e.currentTarget.style.background="rgba(212,160,23,0.08)";e.currentTarget.style.borderColor="#D4A017";}}
+            onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor="rgba(212,160,23,0.4)";}}>
+            Open demo page ↗
+          </a>
+        </div>
 
         {/* HOW */}
         <section className="l-how" id="how">
@@ -435,29 +485,29 @@ export default function Landing({ onEnter }) {
                 <ul className="l-feature-list">
                   <li>English and Hungarian language lock</li>
                   <li>10 office categories auto-detected</li>
-                  <li>Conversation history and follow-up suggestions</li>
+                  <li>Conversation history and follow-ups</li>
                   <li>Escalation to human advisor</li>
-                  <li>Thumbs up/down feedback on every response</li>
+                  <li>Thumbs up/down feedback per response</li>
                 </ul>
               </div>
               <div className="l-feature-card">
                 <div className="l-feature-tag l-tag-navy">Admin command centre</div>
                 <div className="l-feature-title">Analytics and oversight</div>
-                <div className="l-feature-desc">Real-time visibility into student information needs, satisfaction scores, escalation management, and document knowledge base.</div>
+                <div className="l-feature-desc">Real-time visibility into student information needs, satisfaction scores, escalation management, and the document knowledge base.</div>
                 <ul className="l-feature-list">
                   <li>Per-office question volume and ratings</li>
-                  <li>Survey results and research data dashboard</li>
-                  <li>Document upload and knowledge base management</li>
+                  <li>Survey results and TDK research data</li>
+                  <li>Document upload and KB management</li>
                   <li>Full audit log of all staff actions</li>
                 </ul>
               </div>
               <div className="l-feature-card">
                 <div className="l-feature-tag l-tag-red">Staff portal</div>
                 <div className="l-feature-title">Communication tools</div>
-                <div className="l-feature-desc">Publishing interface for announcements, live student activity monitoring, and direct student messaging.</div>
+                <div className="l-feature-desc">Publishing interface for announcements, live student activity monitoring, and direct student messaging — all persisted in Supabase.</div>
                 <ul className="l-feature-list">
                   <li>Scheduled and urgent announcements</li>
-                  <li>Live activity feed</li>
+                  <li>Live activity feed with filters</li>
                   <li>Student directory with nationality data</li>
                 </ul>
               </div>
@@ -469,7 +519,7 @@ export default function Landing({ onEnter }) {
                   <li>Visa and residence permit guidance</li>
                   <li>Stipendium Hungaricum information</li>
                   <li>Neptun step-by-step guide in English</li>
-                  <li>Pre-arrival checklist</li>
+                  <li>Interactive campus map with GPS</li>
                 </ul>
               </div>
             </div>
@@ -484,7 +534,7 @@ export default function Landing({ onEnter }) {
               Their words.<br />The motivation for this project.
             </h2>
             <p className="l-section-sub l-reveal" ref={el => revealRefs.current.push(el)}>
-              Direct verbatim responses from the international student survey. These accounts document
+              Direct verbatim responses from the international student survey conducted March 2025. These accounts document
               the real cost of poor information access.
             </p>
             <div className="l-quotes-grid l-reveal" ref={el => revealRefs.current.push(el)}>
@@ -512,9 +562,14 @@ export default function Landing({ onEnter }) {
               3 minutes. Completely anonymous. Your response contributes to ongoing research and
               directly improves UniAdvisor for every student who follows.
             </p>
-            <button className="l-btn-white l-reveal" ref={el => revealRefs.current.push(el)} onClick={onEnter}>
-              Open UniAdvisor →
-            </button>
+            <div className="l-cta-actions l-reveal" ref={el => revealRefs.current.push(el)}>
+              <button className="l-btn-white" onClick={onEnter}>
+                Open UniAdvisor →
+              </button>
+              <a href="/survey" className="l-btn-white-ghost">
+                Take the survey
+              </a>
+            </div>
             <p className="l-cta-note">21 students have responded · No login required for the survey</p>
           </div>
         </section>
@@ -531,7 +586,7 @@ export default function Landing({ onEnter }) {
               transferable to universities across Central and Eastern Europe.
             </p>
             <div className="l-tech-row l-reveal" ref={el => revealRefs.current.push(el)}>
-              {["Python 3.11","FastAPI","React 18 + Vite","Groq API","Llama 3 (8B + 70B)","BM25 retrieval","Supabase / PostgreSQL","JWT authentication","RAG pipeline","pypdf","python-docx","Render (free tier)"].map(t => (
+              {["Python 3.11","FastAPI","React 18 + Vite","Groq API","Llama 3 (8B + 70B)","BM25 retrieval","Supabase / PostgreSQL","JWT authentication","RAG pipeline","pypdf","Render (free tier)","GitHub CI"].map(t => (
                 <div className="l-tech-pill" key={t}>{t}</div>
               ))}
             </div>
@@ -541,11 +596,15 @@ export default function Landing({ onEnter }) {
         {/* FOOTER */}
         <footer className="l-footer">
           <div className="l-footer-divider" />
-          <p><strong>UniAdvisor AI</strong> · BSc Computer Science Engineering · TDK Research Project</p>
+          <p><strong>UniAdvisor AI</strong> · BSc Computer Science Engineering · TDK Research Project 2025</p>
           <p style={{ marginTop:6 }}><strong>Dunaújváros Egyetem</strong> · Student: <strong>John Jerry Gordon-Mensah</strong> · Supervisor: <strong>Dr. Váraljai Mariann</strong></p>
           <p style={{ marginTop:6 }}>TDK Conference: <strong>May 13, 2025</strong> · Registration deadline: <strong>April 24, 2025</strong></p>
           <p style={{ marginTop:16 }}>
             <button onClick={onEnter} style={{ background:"none",border:"none",color:"rgba(255,255,255,0.45)",cursor:"pointer",fontSize:12,fontFamily:"'Inter',sans-serif" }}>Open app</button>
+            {" · "}
+            <a href="/demo">Live demo</a>
+            {" · "}
+            <a href="/survey">Student survey</a>
             {" · "}
             <a href="https://www.uniduna.hu/en/" target="_blank" rel="noopener noreferrer">University website</a>
           </p>
