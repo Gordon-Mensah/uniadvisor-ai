@@ -647,6 +647,55 @@ def get_feedback():
     return {"total": total, "upvotes": ups, "downvotes": total - ups,
             "score": round((ups/total*100) if total > 0 else 0, 1), "recent": feedback_log[-5:]}
 
+@app.get("/debug/indexed-documents")
+def debug_indexed_documents():
+    """Show what documents are currently indexed in memory (for debugging)."""
+    from rag import _doc_chunks, _doc_lock, OFFICES
+    with _doc_lock:
+        chunks = list(_doc_chunks)
+    
+    # Group by source
+    by_source = {}
+    for chunk in chunks:
+        src = chunk["source"]
+        if src not in by_source:
+            by_source[src] = {"count": 0, "office": chunk["office"], "sample": ""}
+        by_source[src]["count"] += 1
+        if not by_source[src]["sample"]:
+            by_source[src]["sample"] = chunk["text"][:100] + "..."
+    
+    return {
+        "total_chunks": len(chunks),
+        "documents": by_source,
+        "available_offices": {k: v["name"] for k, v in OFFICES.items()},
+    }
+
+@app.get("/debug/search")
+def debug_search(q: str, office: str = "auto"):
+    """Test BM25 search directly (for debugging)."""
+    from rag import _bm25_search, detect_office
+    
+    if office == "auto":
+        office = detect_office(q)
+    
+    results = _bm25_search(q, office=office, k=3)
+    if not results and office != "general":
+        results = _bm25_search(q, office=None, k=3)
+    
+    return {
+        "query": q,
+        "detected_office": office,
+        "results_found": len(results),
+        "results": [
+            {
+                "source": r["source"],
+                "office": r["office"],
+                "preview": r["text"][:150] + "..."
+            }
+            for r in results
+        ]
+    }
+
 
 # ═══════════════════════════════════════════════════════════════
 # OFFICE ANALYTICS

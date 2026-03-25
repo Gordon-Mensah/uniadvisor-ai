@@ -244,6 +244,9 @@ def get_answer(question, student_name="Student", student_year="Year 1",
         docs = _bm25_search(question, office=None, k=3)
 
     context = "\n\n".join(d["text"] for d in docs)
+    
+    # DEBUG: Log search performance
+    print(f"[UniAdvisor] Q='{question[:50]}...' Office={office} Found={len(docs)} docs Context_len={len(context)}")
 
     # Sources
     seen, sources = set(), []
