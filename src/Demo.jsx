@@ -4,7 +4,6 @@
 // Self-contained, no props required.
 // ═══════════════════════════════════════════════════════════
 
-import { useState, useEffect, useRef } from "react";
 import { useState, useEffect, useRef, useCallback } from "react";
 
 const API = import.meta.env.VITE_API_URL || "";
