@@ -25,6 +25,21 @@ _doc_lock     = threading.Lock()
 stats_log     = []
 all_questions = []
 
+# ── Supabase setup (optional for persistence) ──────────────
+try:
+    from supabase import create_client
+    SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+    SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+    if SUPABASE_URL and SUPABASE_KEY:
+        sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+        SUPABASE_AVAILABLE = True
+    else:
+        sb = None
+        SUPABASE_AVAILABLE = False
+except Exception:
+    sb = None
+    SUPABASE_AVAILABLE = False
+
 OFFICES = {
     "study_office":  {"name":"Study Office",                  "emoji":"📚","keywords":["course","subject","curriculum","grade","exam","credit","registration","enrolment","transcript","timetable","schedule","beiratkozás","kurzus","tanulmány","vizsga","féléve"]},
     "iro":           {"name":"International Relations Office", "emoji":"🌍","keywords":["international","erasmus","exchange","visa","residence","foreign","scholarship abroad","iro","international student","külföldi","ösztöndíj","csere","tartózkodási"]},
@@ -60,6 +75,19 @@ def add_document(text, source, office="general", page=None):
         for chunk in chunks:
             _doc_chunks.append({"text":chunk,"source":source,"office":office,"page":page,"tokens":_tokenize(chunk)})
     print(f"[UniAdvisor] +{len(chunks)} chunks '{source}' office={office}")
+    
+    # Also persist to Supabase so documents survive server restarts
+    if SUPABASE_AVAILABLE:
+        try:
+            for chunk in chunks:
+                sb.table("document_chunks").insert({
+                    "text": chunk,
+                    "source": source,
+                    "office": office,
+                    "page": page,
+                }).execute()
+        except Exception as e:
+            print(f"[UniAdvisor] Supabase insert failed (non-fatal): {e}")
 
 def clear_documents(office=None):
     global _doc_chunks
@@ -75,15 +103,47 @@ def save_docs_to_disk():
         data = [{"text":d["text"],"source":d["source"],"office":d["office"],"page":d["page"]} for d in _doc_chunks]
     with open(os.path.join(DOCS_DIR,"_chunks.json"),"w",encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
-    print(f"[UniAdvisor] Saved {len(data)} chunks")
+    print(f"[UniAdvisor] Saved {len(data)} chunks to disk")
+    
+    # Also save to Supabase for production resilience
+    if SUPABASE_AVAILABLE:
+        try:
+            # Clear old chunks first to avoid duplicates
+            sb.table("document_chunks").delete().neq("id", 0).execute()
+            # Insert all current chunks
+            for item in data:
+                sb.table("document_chunks").insert({
+                    "text": item["text"],
+                    "source": item["source"],
+                    "office": item["office"],
+                    "page": item["page"],
+                }).execute()
+            print(f"[UniAdvisor] Synced {len(data)} chunks to Supabase")
+        except Exception as e:
+            print(f"[UniAdvisor] Supabase sync warning (non-fatal): {e}")
 
 def load_docs_from_disk():
+    global _doc_chunks
+    
+    # Try Supabase first (persistent across restarts)
+    if SUPABASE_AVAILABLE:
+        try:
+            result = sb.table("document_chunks").select("*").execute()
+            if result.data:
+                with _doc_lock:
+                    _doc_chunks = [{"text":d["text"],"source":d["source"],"office":d.get("office","general"),"page":d.get("page"),"tokens":_tokenize(d["text"])} for d in result.data]
+                print(f"[UniAdvisor] Loaded {len(_doc_chunks)} chunks from Supabase")
+                return
+        except Exception as e:
+            print(f"[UniAdvisor] Supabase load failed: {e}")
+    
+    # Fallback to local file system
     path = os.path.join(DOCS_DIR,"_chunks.json")
     if not os.path.exists(path):
+        print("[UniAdvisor] No documents found (Supabase unavailable, no local file)")
         return
     with open(path,"r",encoding="utf-8") as f:
         data = json.load(f)
-    global _doc_chunks
     with _doc_lock:
         _doc_chunks = [{"text":d["text"],"source":d["source"],"office":d.get("office","general"),"page":d.get("page"),"tokens":_tokenize(d["text"])} for d in data]
     print(f"[UniAdvisor] Loaded {len(_doc_chunks)} chunks from disk")
