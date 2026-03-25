@@ -283,7 +283,7 @@ def root():
         return FileResponse(index, media_type="text/html")
     return {"status": "UniAdvisor AI v3.0 running — frontend not built yet"}
 
-@app.api_route("/health", methods=["GET", "HEAD"])
+@app.get("/health")
 def health():
     return {"status": "ok", "supabase": SUPABASE_AVAILABLE, "bcrypt": BCRYPT_AVAILABLE}
 
@@ -950,6 +950,21 @@ def detect_office_endpoint(body: dict):
 
 
 # ── Catch-all: serve React app for any non-API route ─────────
+@app.get("/landing")
+async def landing_page():
+    """Public landing page — no auth required."""
+    import os as _os
+    # Check project root first, then dist folder
+    for path in ["landing.html", "dist/landing.html"]:
+        if _os.path.isfile(path):
+            return FileResponse(path, media_type="text/html")
+    # Fallback: serve the React app (landing.html will be bundled in dist)
+    index = _os.path.join(_os.path.dirname(__file__), "dist", "index.html")
+    if _os.path.isfile(index):
+        return FileResponse(index, media_type="text/html")
+    return {"error": "Landing page not found"}
+
+
 @app.get("/{full_path:path}")
 async def serve_react(full_path: str):
     """Serve React index.html for all non-API routes (SPA routing)."""

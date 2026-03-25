@@ -43,7 +43,7 @@ const T = {
     ],
     navQuery:(l)=>`Tell me about ${l} at Dunaújváros Egyetem`,
     language:"LANGUAGE", darkMode:"Dark Mode", lightMode:"Light Mode",
-    topbarTitle:"AI Academic Advisor", topbarSub:"RAG · Groq LLaMA3 · ChromaDB",
+    topbarTitle:"AI Academic Advisor", topbarSub:"RAG · Groq LLaMA3 · BM25",
     export:"Export Chat", online:"Online",
     welcomeHi:(n)=>`Hi ${n}, I'm your AI Advisor!`,
     welcomeSub:"Ask me anything about courses, deadlines, scholarships, or university policies.",
@@ -84,7 +84,7 @@ const T = {
     ],
     navQuery:(l)=>`Mesélj erről: ${l} a Dunaújvárosi Egyetemen`,
     language:"NYELV", darkMode:"Sötét mód", lightMode:"Világos mód",
-    topbarTitle:"AI Tanulmányi Tanácsadó", topbarSub:"RAG · Groq LLaMA3 · ChromaDB",
+    topbarTitle:"AI Tanulmányi Tanácsadó", topbarSub:"RAG · Groq LLaMA3 · BM25",
     export:"Chat exportálása", online:"Online",
     welcomeHi:(n)=>`Szia ${n}, az AI tanácsadód vagyok!`,
     welcomeSub:"Kérdezz bármit kurzusokról, határidőkről, ösztöndíjakról vagy az egyetem szabályzatairól.",
@@ -925,7 +925,7 @@ export default function App() {
     TokenStore.del(); setToken(null); setUser(null);
   };
 
-  // Public survey — accessible without login at /survey
+  // Public routes — no login required
   if(window.location.pathname === "/survey") return <PublicSurvey />;
 
   if(!user) return <LoginScreen onLogin={handleLogin} />;
