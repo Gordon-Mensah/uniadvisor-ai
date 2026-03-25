@@ -5,6 +5,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 const API = import.meta.env.VITE_API_URL || "";
 
@@ -56,20 +57,33 @@ const TIMELINE = [
 ];
 
 function useInView(threshold = 0.1) {
-  const ref = useRef(null);
   const [v, setV] = useState(false);
-  useEffect(() => {
-    const o = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setV(true); o.disconnect(); } }, { threshold });
-    if (ref.current) o.observe(ref.current);
-    return () => o.disconnect();
+  const ref = useCallback((node) => {
+    if (!node) return;
+    const o = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) { setV(true); o.disconnect(); }
+    }, { threshold });
+    o.observe(node);
   }, []);
   return [ref, v];
 }
 
 function Reveal({ children, delay = 0, y = 24 }) {
   const [ref, v] = useInView();
+  const [ready, setReady] = useState(false);
+  
+  useEffect(() => {
+    // Fallback: show content after 800ms regardless
+    const t = setTimeout(() => setReady(true), 800);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
-    <div ref={ref} style={{ opacity: v ? 1 : 0, transform: v ? "none" : `translateY(${y}px)`, transition: `opacity 0.6s ease ${delay}s, transform 0.6s ease ${delay}s` }}>
+    <div ref={ref} style={{
+      opacity: (v || ready) ? 1 : 0,
+      transform: (v || ready) ? "none" : `translateY(${y}px)`,
+      transition: `opacity 0.6s ease ${delay}s, transform 0.6s ease ${delay}s`
+    }}>
       {children}
     </div>
   );
