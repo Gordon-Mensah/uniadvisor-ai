@@ -48,7 +48,13 @@ except ImportError:
 try:
     from supabase import create_client
     SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-    SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+    # The backend needs the service-role key: it bypasses row-level security,
+    # which is locked down so the public anon key can only read announcements.
+    SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not SUPABASE_KEY and os.getenv("SUPABASE_ANON_KEY"):
+        SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
+        print("[UniAdvisor] WARNING: SUPABASE_SERVICE_ROLE_KEY not set, using SUPABASE_ANON_KEY. "
+              "Database calls will fail once row-level security is enabled.")
     if SUPABASE_URL and SUPABASE_KEY:
         sb = create_client(SUPABASE_URL, SUPABASE_KEY)
         SUPABASE_AVAILABLE = True
@@ -94,7 +100,14 @@ def verify_password(plain: str, hashed: str) -> bool:
 def generate_token() -> str:
     return secrets.token_urlsafe(48)
 
-JWT_SECRET = os.getenv("JWT_SECRET", "uniadvisor-secret-key-change-in-prod-2024")
+JWT_SECRET = os.getenv("JWT_SECRET", "")
+if not JWT_SECRET or JWT_SECRET == "uniadvisor-secret-key-change-in-prod-2024":
+    raise RuntimeError(
+        "JWT_SECRET environment variable is not set (or is the old public default). "
+        "The server will not start without it, because anyone could forge login tokens. "
+        "Generate one with:  python -c \"import secrets; print(secrets.token_urlsafe(64))\"  "
+        "and set it in your .env file or hosting dashboard."
+    )
 
 def create_session(user_id, email: str, role: str = "student") -> str:
     """Create a signed JWT — survives server restarts, no DB lookup needed."""
@@ -155,6 +168,20 @@ def require_admin(session = Depends(get_current_user)):
     if session.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return session
+
+def require_staff(session = Depends(get_current_user)):
+    if session.get("role") not in ("staff", "admin"):
+        raise HTTPException(status_code=403, detail="Staff access required")
+    return session
+
+def optional_user(authorization: str = Header(None)):
+    """Session if a valid token was sent, else None (for endpoints open to anonymous users)."""
+    if not authorization:
+        return None
+    try:
+        return get_current_user(authorization)
+    except HTTPException:
+        return None
 
 def require_self_or_admin(session: dict, email: str):
     """Students may only access their own records; admins may access anyone's."""
@@ -250,20 +277,39 @@ class AnnouncementCreate(BaseModel):
     expires_at:   Optional[str] = None
 
 class FeedbackItem(BaseModel):
-    student_email: Optional[str] = None
     question:      str
     answer:        str
     rating:        str   # "up" or "down"
     office:        Optional[str] = None
 
 class EscalationCreate(BaseModel):
-    student_email: str
     student_name:  str
     subject:       str
     message:       str
 
 class EscalationReply(BaseModel):
     admin_reply: str
+
+class AnnouncementRead(BaseModel):
+    action: str = "read"   # "read" or "dismissed"
+
+class StaffMessageCreate(BaseModel):
+    to_target: str
+    type:      str = "info"
+    text:      str
+
+class SurveyResponse(BaseModel):
+    student_name:          Optional[str] = None
+    student_nationality:   Optional[str] = None
+    student_major:         Optional[str] = None
+    student_year:          Optional[str] = None
+    arrival_confusion:     Optional[str] = None
+    info_source:           Optional[str] = None
+    hardest_topic:         Optional[str] = None
+    info_quality:          Optional[int] = None
+    uniadvisor_usefulness: Optional[int] = None
+    missing_feature:       Optional[str] = None
+    open_feedback:         Optional[str] = None
 
 class ProgressTaskUpdate(BaseModel):
     student_email: str
@@ -455,14 +501,7 @@ def _extract_text(contents: bytes, filename: str) -> str:
 # ═══════════════════════════════════════════════════════════════
 
 @app.post("/upload")
-async def upload_document(file: UploadFile = File(...), office: str = "general", authorization: str = Header(None)):
-    # Manual auth check with detailed error for debugging
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="No token provided")
-    try:
-        session = get_current_user(authorization)
-    except HTTPException as e:
-        raise HTTPException(status_code=401, detail=f"Auth failed: {e.detail}")
+async def upload_document(file: UploadFile = File(...), office: str = "general", session = Depends(require_admin)):
     if not file.filename.endswith((".pdf", ".txt", ".docx")):
         raise HTTPException(status_code=400, detail="Only PDF, TXT, DOCX supported.")
     try:
@@ -534,13 +573,14 @@ def get_announcements():
     return {"announcements": [a for a in announcements if a["active"]]}
 
 @app.post("/announcements")
-def create_announcement(item: AnnouncementCreate, session = Depends(require_admin)):
+def create_announcement(item: AnnouncementCreate, session = Depends(require_staff)):
     ann = {
         "text":         item.text,
         "type":         item.type,
         "active":       True,
         "scheduled_at": item.scheduled_at or datetime.now().isoformat(),
         "expires_at":   item.expires_at,
+        "created_by":   session["email"],
         "created_at":   datetime.now().isoformat(),
     }
     if SUPABASE_AVAILABLE:
@@ -554,7 +594,7 @@ def create_announcement(item: AnnouncementCreate, session = Depends(require_admi
     return {"message": "Announcement created.", "announcement": ann}
 
 @app.delete("/announcements/{ann_id}")
-def delete_announcement(ann_id: int, session = Depends(require_admin)):
+def delete_announcement(ann_id: int, session = Depends(require_staff)):
     if SUPABASE_AVAILABLE:
         try:
             sb.table("announcements").update({"active": False}).eq("id", ann_id).execute()
@@ -568,6 +608,126 @@ def delete_announcement(ann_id: int, session = Depends(require_admin)):
     raise HTTPException(status_code=404, detail="Not found.")
 
 
+@app.post("/announcements/{ann_id}/read")
+def mark_announcement(ann_id: int, item: AnnouncementRead, session = Depends(get_current_user)):
+    if item.action not in ("read", "dismissed"):
+        raise HTTPException(status_code=400, detail="action must be 'read' or 'dismissed'")
+    if SUPABASE_AVAILABLE:
+        try:
+            sb.table("announcement_reads").upsert({
+                "announcement_id": ann_id,
+                "student_email":   session["email"],
+                "action":          item.action,
+            }, on_conflict="announcement_id,student_email").execute()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"message": "Recorded."}
+
+@app.get("/announcements/receipts")
+def announcement_receipts(session = Depends(require_staff)):
+    """Read/dismissed counts per announcement, for the staff portal."""
+    if not SUPABASE_AVAILABLE:
+        return {"receipts": {}}
+    try:
+        rows = sb.table("announcement_reads").select("announcement_id, action").execute().data or []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    counts = {}
+    for r in rows:
+        c = counts.setdefault(r["announcement_id"], {"read": 0, "dismissed": 0})
+        if r["action"] in c:
+            c[r["action"]] += 1
+    return {"receipts": counts}
+
+
+# ═══════════════════════════════════════════════════════════════
+# STAFF PORTAL DATA
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/staff/activity")
+def staff_activity(session = Depends(require_staff)):
+    if not SUPABASE_AVAILABLE:
+        return {"activity": []}
+    try:
+        result = sb.table("chat_logs").select("student_name, major, question, asked_at") \
+                   .order("asked_at", desc=True).limit(50).execute()
+        return {"activity": result.data or []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/staff/students")
+def staff_students(session = Depends(require_staff)):
+    if not SUPABASE_AVAILABLE:
+        return {"students": []}
+    try:
+        result = sb.table("users").select("full_name, email, major, year_of_study, student_id, active") \
+                   .eq("role", "student").order("full_name").execute()
+        return {"students": result.data or []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/staff/messages")
+def staff_messages(session = Depends(require_staff)):
+    if not SUPABASE_AVAILABLE:
+        return {"messages": []}
+    try:
+        result = sb.table("staff_messages").select("*").eq("from_email", session["email"]) \
+                   .order("sent_at", desc=True).execute()
+        return {"messages": result.data or []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/staff/messages")
+def send_staff_message(item: StaffMessageCreate, session = Depends(require_staff)):
+    if not SUPABASE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Supabase not connected")
+    target = item.to_target.strip()
+    try:
+        found = sb.table("users").select("full_name").eq("email", session["email"]).execute().data
+        from_name = (found[0].get("full_name") if found else None) or session["email"]
+        result = sb.table("staff_messages").insert({
+            "from_email": session["email"],
+            "from_name":  from_name,
+            "to_target":  target,
+            "type":       item.type,
+            "text":       item.text.strip(),
+            "is_group":   "all" in target.lower() or "year" in target.lower() or "@" not in target,
+        }).execute()
+        return {"message": "Message sent.", "data": result.data[0] if result.data else {}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════
+# SURVEY
+# ═══════════════════════════════════════════════════════════════
+
+@app.post("/survey")
+def submit_survey(item: SurveyResponse, session = Depends(optional_user)):
+    """Open to anonymous users (public /survey page); the email comes only from a valid token."""
+    if not SUPABASE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Supabase not connected")
+    entry = item.model_dump() if hasattr(item, "model_dump") else item.dict()
+    entry["student_email"] = session["email"] if session else "anonymous"
+    entry["student_name"]  = (item.student_name or "Anonymous") if session else "Anonymous"
+    entry["submitted_at"]  = datetime.now().isoformat()
+    try:
+        sb.table("survey_responses").insert(entry).execute()
+        return {"message": "Thank you!"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/survey-responses")
+def survey_responses(session = Depends(require_admin)):
+    if not SUPABASE_AVAILABLE:
+        return {"responses": []}
+    try:
+        result = sb.table("survey_responses").select("*").order("submitted_at", desc=True).execute()
+        return {"responses": result.data or []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ═══════════════════════════════════════════════════════════════
 # FEEDBACK (thumbs up/down)
 # ═══════════════════════════════════════════════════════════════
@@ -575,7 +735,7 @@ def delete_announcement(ann_id: int, session = Depends(require_admin)):
 @app.post("/feedback")
 def submit_feedback(item: FeedbackItem, session = Depends(get_current_user)):
     entry = {
-        "student_email": item.student_email,
+        "student_email": session["email"],
         "question":      item.question,
         "answer":        item.answer[:300],
         "rating":        item.rating,
@@ -743,7 +903,7 @@ def get_escalations(status: Optional[str] = None, session = Depends(require_admi
 @app.post("/escalations")
 def create_escalation(item: EscalationCreate, session = Depends(get_current_user)):
     entry = {
-        "student_email": item.student_email,
+        "student_email": session["email"],
         "student_name":  item.student_name,
         "subject":       item.subject,
         "message":       item.message,
