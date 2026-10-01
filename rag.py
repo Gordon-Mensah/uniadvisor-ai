@@ -14,7 +14,7 @@ from collections import defaultdict
 from dotenv import load_dotenv
 
 load_dotenv()
-from groq_key_rotator import get_groq_rotator
+from groq_key_rotator import get_groq_rotator, final_text
 
 DOCS_DIR  = os.getenv("DOCS_DIR", "./uploaded_docs")
 CACHE_MAX = 200
@@ -235,9 +235,9 @@ def get_answer(question, student_name="Student", student_year="Year 1",
     if doc_count() == 0:
         r = rotator.chat(
             messages=[{"role":"user","content":f"UniAdvisor AI, Dunaujvaros Egyetem. {nat_note}You MUST reply in {lang} only. No docs yet — use general knowledge.\nQ: {question}\nA:"}],
-            max_tokens=320, temperature=0.3, model="llama-3.1-8b-instant",
+            max_tokens=1024, temperature=0.3,
         )
-        return r.choices[0].message.content, [], office
+        return final_text(r), [], office
 
     # BM25 search
     docs = _bm25_search(question, office=office, k=3)
@@ -286,8 +286,8 @@ def get_answer(question, student_name="Student", student_year="Year 1",
         msgs.append({"role":role,"content":m.get("content","")})
     msgs.append({"role":"user","content":question})
 
-    r = rotator.chat(messages=msgs, max_tokens=320, temperature=0.1, model="llama-3.1-8b-instant")
-    answer = r.choices[0].message.content
+    r = rotator.chat(messages=msgs, max_tokens=1024, temperature=0.1)
+    answer = final_text(r)
 
     # Cache
     if len(_answer_cache) >= CACHE_MAX:
