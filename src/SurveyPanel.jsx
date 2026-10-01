@@ -3,11 +3,26 @@
 // Used for TDK research data + improves UniAdvisor content
 
 import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+const API = import.meta.env.VITE_API_URL || "";
 
-const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL      || "";
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Survey answers go through the backend (row-level security blocks direct anon inserts).
+// Returns { error } so callers keep the same shape as the old Supabase insert.
+async function postSurvey(payload, token) {
+  try {
+    const res = await fetch(`${API}/survey`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      return { error: new Error(d.detail || `HTTP ${res.status}`) };
+    }
+    return { error: null };
+  } catch (e) {
+    return { error: e };
+  }
+}
 
 // ── Questions ─────────────────────────────────────────────
 const QUESTIONS = [
@@ -97,7 +112,7 @@ const QUESTIONS = [
   },
 ];
 
-export default function SurveyPanel({ C, user, onClose }) {
+export default function SurveyPanel({ C, user, token, onClose }) {
   const [answers, setAnswers]   = useState({});
   const [step, setStep]         = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -162,7 +177,7 @@ export default function SurveyPanel({ C, user, onClose }) {
         open_feedback:       answers.open_feedback || "",
         submitted_at:        new Date().toISOString(),
       };
-      const { error: err } = await supabase.from("survey_responses").insert(payload);
+      const { error: err } = await postSurvey(payload, token);
       if (err) throw err;
       setDone(true);
     } catch (e) {

@@ -311,7 +311,7 @@ function RepliesPanel({ C, user, token, uiLang, onClose }) {
   );
 }
 
-function AnnouncementBanner({ C, userEmail }) {
+function AnnouncementBanner({ C, token }) {
   const [banners,setBanners]     = useState([]);
   const [dismissed,setDismissed] = useState(new Set());
 
@@ -321,12 +321,13 @@ function AnnouncementBanner({ C, userEmail }) {
       .then(({data})=>{ if(data) setBanners(data); });
   },[]);
 
+  const record = (id, action) => token && fetch(`${API}/announcements/${id}/read`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({action})}).catch(()=>{});
   const dismiss = async (id) => {
     setDismissed(prev=>new Set([...prev,id]));
-    if(userEmail) await supabase.from("announcement_reads").upsert({announcement_id:id,student_email:userEmail,action:"dismissed"},{onConflict:"announcement_id,student_email"});
+    await record(id,"dismissed");
   };
   const markRead = async (id) => {
-    if(userEmail) await supabase.from("announcement_reads").upsert({announcement_id:id,student_email:userEmail,action:"read"},{onConflict:"announcement_id,student_email"});
+    await record(id,"read");
   };
 
   const TYPE_COLORS = {
@@ -424,12 +425,7 @@ function LoginScreen({ onLogin, onBack }) {
       TokenStore.set(data.token);
       onLogin(data.user, data.token);
     } catch {
-      try {
-        const { data, error:err } = await supabase.from("users").select("*").eq("email",email.trim()).eq("active",true).single();
-        if(err||!data) throw new Error("Invalid credentials");
-        if(data.password===password||data.role===role) { onLogin(data, null); }
-        else throw new Error("Invalid credentials");
-      } catch { setError("Invalid email or password."); }
+      setError("Invalid email or password.");
     }
     setLoading(false);
   };
@@ -545,7 +541,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
   };
 
   const sendFeedback = useCallback(async (rating,msg) => {
-    await fetch(`${API}/feedback`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({student_email:user.email,question:msg.question||"",answer:msg.content,rating,office:msg.office})}).catch(()=>{});
+    await fetch(`${API}/feedback`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({question:msg.question||"",answer:msg.content,rating,office:msg.office})}).catch(()=>{});
   },[user.email]);
 
   const sendMessage = async (text=input) => {
@@ -666,7 +662,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
           </div>
         </div>
 
-        <AnnouncementBanner C={C} userEmail={user.email} />
+        <AnnouncementBanner C={C} token={token} />
 
         <div style={{ padding:"8px 12px 0",display:"flex",gap:6,flexShrink:0,borderBottom:`1px solid ${C.border}`,overflowX:"auto",WebkitOverflowScrolling:"touch" }}>
           {OFFICE_PILLS.map(p=>(
@@ -752,7 +748,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
       {showReplies    && <RepliesPanel   C={C} user={user} token={token} uiLang={uiLang} onClose={()=>setShowReplies(false)} />}
       {showSurvey     && (
         <div style={{ position:"fixed",inset:0,zIndex:2000 }}>
-          <PublicSurvey onClose={()=>setShowSurvey(false)} />
+          <PublicSurvey token={token} onClose={()=>setShowSurvey(false)} />
         </div>
       )}
 
