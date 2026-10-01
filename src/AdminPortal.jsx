@@ -4,8 +4,6 @@
 // ═══════════════════════════════════════════════════════════
 
 import { useState, useEffect, useRef } from "react";
-import { createClient } from "@supabase/supabase-js";
-const _sb = createClient(import.meta.env.VITE_SUPABASE_URL||"", import.meta.env.VITE_SUPABASE_ANON_KEY||"");
 
 const API = import.meta.env.VITE_API_URL || "";
 
@@ -166,12 +164,9 @@ export default function AdminPortal({ user, token, onLogout }) {
     safeFetch(`${API}/events`,           d => setEvents(d.events || []));
     // Survey responses fetched directly from Supabase
     // Survey responses — fetch with error logging
-    _sb.from("survey_responses").select("*").order("submitted_at",{ascending:false})
-      .then(({data, error}) => {
-        if(error) console.error("Survey fetch error:", error);
-        if(data)  setSurveyData(data);
-        else      setSurveyData([]);
-      })
+    fetch(`${API}/survey-responses`, { headers: auth })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(d => setSurveyData(d.responses || []))
       .catch(e => { console.error("Survey fetch failed:", e); setSurveyData([]); });
   }, []);
 

@@ -13,7 +13,8 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL     = import.meta.env.VITE_SUPABASE_URL     || "https://your-project.supabase.co";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "your-anon-key";
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);  // read-only: active announcements
+const API = import.meta.env.VITE_API_URL || "";
 
 // ── Palette ──────────────────────────────────────────────────
 const S = {
@@ -77,7 +78,7 @@ function Skeleton({ width="100%", height=16, radius=6 }) {
   return <div style={{ width, height, borderRadius:radius, background:"linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%)", backgroundSize:"200% 100%", animation:"shimmer 1.4s infinite" }} />;
 }
 
-export default function StaffPortal({ user, onLogout }) {
+export default function StaffPortal({ user, token, onLogout }) {
   const [section, setSection]     = useState("announcements");
   // Announcements
   const [anns, setAnns]           = useState([]);
@@ -112,6 +113,17 @@ export default function StaffPortal({ user, onLogout }) {
 
   const showToast = (msg, type="success") => setToast({ msg, type });
 
+  // All reads/writes go through the backend API (row-level security blocks the anon key)
+  const api = async (path, opts = {}) => {
+    const res = await fetch(`${API}${path}`, {
+      ...opts,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(opts.headers || {}) },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+    return data;
+  };
+
   // ── Load announcements from Supabase ───────────────────────
   useEffect(() => {
     loadAnnouncements();
@@ -132,21 +144,7 @@ export default function StaffPortal({ user, onLogout }) {
     if (!error && data) {
       setAnns(data);
       // load read receipt counts
-      const ids = data.map(a => a.id);
-      if (ids.length > 0) {
-        const { data: rdata } = await supabase
-          .from("announcement_reads")
-          .select("announcement_id, action")
-          .in("announcement_id", ids);
-        if (rdata) {
-          const counts = {};
-          rdata.forEach(r => {
-            if (!counts[r.announcement_id]) counts[r.announcement_id] = { read:0, dismissed:0 };
-            counts[r.announcement_id][r.action]++;
-          });
-          setReceipts(counts);
-        }
-      }
+      try { const r = await api("/announcements/receipts"); setReceipts(r.receipts || {}); } catch {}
     }
     setAnnsLoading(false);
   };
@@ -154,43 +152,29 @@ export default function StaffPortal({ user, onLogout }) {
   // ── Load real chat logs from Supabase ──────────────────────
   const loadActivity = async () => {
     setActLoading(true);
-    const { data, error } = await supabase
-      .from("chat_logs")
-      .select("student_name, major, question, asked_at")
-      .order("asked_at", { ascending: false })
-      .limit(50);
-    if (!error && data) {
+    try {
+      const data = (await api("/staff/activity")).activity || [];
       setActivity(data.map(r => ({
         student: r.student_name || "Unknown",
         major:   r.major || "—",
         q:       r.question,
         time:    timeAgo(r.asked_at),
       })));
-    }
+    } catch {}
     setActLoading(false);
   };
 
   // ── Load students from Supabase users table ────────────────
   const loadStudents = async () => {
     setDirLoading(true);
-    const { data, error } = await supabase
-      .from("users")
-      .select("full_name, email, major, year_of_study, student_id, active")
-      .eq("role", "student")
-      .order("full_name");
-    if (!error && data) setStudents(data);
+    try { setStudents((await api("/staff/students")).students || []); } catch {}
     setDirLoading(false);
   };
 
   // ── Load sent messages from Supabase ──────────────────────
   const loadMessages = async () => {
     setMsgLoading(true);
-    const { data, error } = await supabase
-      .from("staff_messages")
-      .select("*")
-      .eq("from_email", user.email)
-      .order("sent_at", { ascending: false });
-    if (!error && data) setMessages(data);
+    try { setMessages((await api("/staff/messages")).messages || []); } catch {}
     setMsgLoading(false);
   };
 
@@ -201,12 +185,11 @@ export default function StaffPortal({ user, onLogout }) {
     const payload = {
       text: annText.trim(),
       type: annType,
-      active: true,
-      created_by: user.email,
       scheduled_at: isScheduled && scheduledAt ? new Date(scheduledAt).toISOString() : new Date().toISOString(),
     };
-    const { data, error } = await supabase.from("announcements").insert([payload]).select().single();
-    if (!error && data) {
+    let data = null;
+    try { data = (await api("/announcements", { method: "POST", body: JSON.stringify(payload) })).announcement; } catch {}
+    if (data) {
       if (!isScheduled || !scheduledAt || new Date(scheduledAt) <= new Date()) {
         setAnns(prev => [data, ...prev]);
         showToast("Announcement published!");
@@ -222,8 +205,9 @@ export default function StaffPortal({ user, onLogout }) {
 
   // ── Delete announcement ────────────────────────────────────
   const deleteAnn = async (id) => {
-    const { error } = await supabase.from("announcements").update({ active: false }).eq("id", id);
-    if (!error) {
+    let ok = false;
+    try { await api(`/announcements/${id}`, { method: "DELETE" }); ok = true; } catch {}
+    if (ok) {
       setAnns(prev => prev.filter(a => a.id !== id));
       showToast("Announcement removed");
     }
@@ -233,17 +217,10 @@ export default function StaffPortal({ user, onLogout }) {
   const sendMsg = async () => {
     if (!msgText.trim() || !msgTo.trim() || sendingMsg) return;
     setSendingMsg(true);
-    const isGroup = msgTo.toLowerCase().includes("all") || msgTo.toLowerCase().includes("year") || !msgTo.includes("@");
-    const payload = {
-      from_email: user.email,
-      from_name: user.full_name,
-      to_target: msgTo.trim(),
-      type: msgType,
-      text: msgText.trim(),
-      is_group: isGroup,
-    };
-    const { data, error } = await supabase.from("staff_messages").insert([payload]).select().single();
-    if (!error && data) {
+    const payload = { to_target: msgTo.trim(), type: msgType, text: msgText.trim() };
+    let data = null;
+    try { data = (await api("/staff/messages", { method: "POST", body: JSON.stringify(payload) })).data; } catch {}
+    if (data) {
       setMessages(prev => [data, ...prev]);
       setMsgText(""); setMsgTo("");
       showToast("Message saved & sent!");

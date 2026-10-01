@@ -1,11 +1,26 @@
 // PublicSurvey.jsx — No login required
 // Accessible at /survey — for sharing with international students
 import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+const API = import.meta.env.VITE_API_URL || "";
 
-const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL      || "";
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Survey answers go through the backend (row-level security blocks direct anon inserts).
+// Returns { error } so callers keep the same shape as the old Supabase insert.
+async function postSurvey(payload, token) {
+  try {
+    const res = await fetch(`${API}/survey`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      return { error: new Error(d.detail || `HTTP ${res.status}`) };
+    }
+    return { error: null };
+  } catch (e) {
+    return { error: e };
+  }
+}
 
 const ACCENT  = "#0D9488";
 const ACCENT2 = "#0EA5E9";
@@ -92,7 +107,7 @@ const IDENTITY_FIELDS = [
   { id: "year",        label: "Which year are you in?",     placeholder: "e.g. Year 1, Year 2…" },
 ];
 
-export default function PublicSurvey() {
+export default function PublicSurvey({ token } = {}) {
   const [step, setStep]           = useState(-1); // -1 = identity step
   const [identity, setIdentity]   = useState({ nationality:"", major:"", year:"" });
   const [answers, setAnswers]     = useState({});
@@ -131,7 +146,7 @@ export default function PublicSurvey() {
   const submit = async () => {
     setSubmitting(true); setError("");
     try {
-      const { error: err } = await supabase.from("survey_responses").insert({
+      const { error: err } = await postSurvey({
         student_email:           "anonymous",
         student_name:            "Anonymous",
         student_nationality:     identity.nationality || "Unknown",
@@ -145,7 +160,7 @@ export default function PublicSurvey() {
         missing_feature:         answers.missing_feature       || "",
         open_feedback:           answers.open_feedback         || "",
         submitted_at:            new Date().toISOString(),
-      });
+      }, token);
       if (err) throw err;
       setDone(true);
     } catch(e) {

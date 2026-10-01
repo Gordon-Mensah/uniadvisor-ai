@@ -29,7 +29,8 @@ all_questions = []
 try:
     from supabase import create_client
     SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-    SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+    # Service-role key bypasses row-level security (anon is limited to reading announcements)
+    SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     if SUPABASE_URL and SUPABASE_KEY:
         sb = create_client(SUPABASE_URL, SUPABASE_KEY)
         SUPABASE_AVAILABLE = True
