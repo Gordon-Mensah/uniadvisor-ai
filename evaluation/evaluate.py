@@ -18,6 +18,7 @@ Usage (from the repository root):
     python evaluation/evaluate.py --retrieval-only   # no LLM calls; retrieval metrics only
     python evaluation/evaluate.py --validate         # only check questions.json against the KB
     python evaluation/evaluate.py --limit 5 --delay 2
+    python evaluation/evaluate.py --model openai/gpt-oss-120b   # compare another Groq model
 
 Outputs (in evaluation/results/ by default):
     results_<timestamp>.csv   one row per question
@@ -166,6 +167,29 @@ class RetrievalRecorder:
         self.rag._bm25_search = self.original
 
 
+class ServedModelRecorder:
+    """Wraps GroqKeyRotator.chat to record which model Groq actually answered with."""
+
+    def __init__(self):
+        import groq_key_rotator
+        self.cls = groq_key_rotator.GroqKeyRotator
+        self.original = self.cls.chat
+        self.last = ""
+
+    def __enter__(self):
+        recorder = self
+
+        def wrapped(rotator_self, *args, **kwargs):
+            response = recorder.original(rotator_self, *args, **kwargs)
+            recorder.last = getattr(response, "model", "") or ""
+            return response
+        self.cls.chat = wrapped
+        return self
+
+    def __exit__(self, *exc):
+        self.cls.chat = self.original
+
+
 class _OfflineRotator:
     """Stand-in for the Groq rotator in --retrieval-only mode (no network calls)."""
 
@@ -291,6 +315,7 @@ def build_summary(rows, meta):
         "",
         f"- Run: {meta['timestamp']}",
         f"- Mode: {meta['mode']}",
+        f"- Model: {meta['model']}",
         f"- Knowledge base: {meta['kb']}",
         f"- Questions: {len(rows)} ({errors} failed with errors)",
         f"- Retrieval: BM25, top-3 chunks (rag.py defaults)",
@@ -315,7 +340,7 @@ def build_summary(rows, meta):
 # ═══════════════════════════════════════════════════════════════
 
 CSV_FIELDS = [
-    "id", "language", "category", "answerable", "question", "expected_answer", "answer",
+    "id", "language", "category", "answerable", "question", "expected_answer", "answer", "model",
     "detected_office", "response_time_s", "retrieval_hit", "hit_rank", "key_fact_score",
     "answer_correct", "abstained", "false_abstention", "abstention_correct",
     "retrieved_chunks", "source_passage", "error", "manual_correct",
@@ -331,6 +356,9 @@ def main():
                    help="Use an existing _chunks.json (e.g. uploaded_docs/_chunks.json) instead of --kb")
     p.add_argument("--out-dir", default=os.path.join(HERE, "results"))
     p.add_argument("--retrieval-only", action="store_true", help="Skip LLM calls; measure retrieval only")
+    p.add_argument("--model", default=None,
+                   help="Groq model to evaluate (default: GROQ_MODEL env var, else openai/gpt-oss-20b), "
+                        "e.g. openai/gpt-oss-120b")
     p.add_argument("--validate", action="store_true", help="Only validate questions.json against the KB")
     p.add_argument("--nationality", default="International",
                    help="student_nationality passed to get_answer (default: International)")
@@ -357,7 +385,11 @@ def main():
     if args.validate:
         return
 
+    if args.model:
+        os.environ["GROQ_MODEL"] = args.model  # rag.py / groq_key_rotator read it on every call
+    import groq_key_rotator
     import rag
+    model_name = groq_key_rotator.current_model()
     if args.retrieval_only:
         rag.get_groq_rotator = lambda: _OfflineRotator()
     kb_desc = load_knowledge_base(rag, args.kb, args.chunks_file)
@@ -366,15 +398,18 @@ def main():
         questions = questions[:args.limit]
 
     rows = []
-    with RetrievalRecorder(rag) as recorder:
+    served_models = set()
+    with RetrievalRecorder(rag) as recorder, ServedModelRecorder() as served:
         for i, q in enumerate(questions, 1):
             recorder.last = []
+            served.last = ""
             answer, office, seconds, error = ask(rag, q, args.nationality, args.retries, backoff=args.delay or 1.0)
             chunks = recorder.last
             row = {
                 "id": q["id"], "language": q["language"], "category": q["category"],
                 "answerable": q["answerable"], "question": q["question"],
                 "expected_answer": q.get("expected_answer") or "", "answer": answer,
+                "model": served.last or ("" if args.retrieval_only else model_name),
                 "detected_office": office,
                 "response_time_s": "" if seconds is None else round(seconds, 3),
                 "retrieved_chunks": "\n\n---\n\n".join(
@@ -385,12 +420,15 @@ def main():
             row.update(score(q, answer if not error else "", chunks, args.retrieval_only))
             rows.append(row)
 
-            status = "ERROR" if error else (
+            if served.last:
+                served_models.add(served.last)
+            status = f"ERROR: {error}" if error else (
                 f"hit={row['retrieval_hit']}" if q["answerable"] else "unanswerable")
             if not args.retrieval_only and not error:
                 status += (f" correct={row['answer_correct']}" if q["answerable"]
                            else f" abstained={row['abstained']}")
-            print(f"[{i:>2}/{len(questions)}] {q['id']} {status} ({row['response_time_s']}s)")
+            timing = f" ({row['response_time_s']}s)" if row["response_time_s"] != "" else ""
+            print(f"[{i:>2}/{len(questions)}] {q['id']} {status}{timing}")
             if args.delay and i < len(questions):
                 time.sleep(args.delay)
 
@@ -403,7 +441,10 @@ def main():
         writer.writerows(rows)
 
     meta = {"timestamp": stamp, "kb": kb_desc,
-            "mode": "retrieval only (no LLM)" if args.retrieval_only else "full (retrieval + LLM)"}
+            "mode": "retrieval only (no LLM)" if args.retrieval_only else "full (retrieval + LLM)",
+            "model": "n/a (retrieval only)" if args.retrieval_only else (
+                model_name + (f" (served by Groq as: {', '.join(sorted(served_models))})"
+                              if served_models and served_models != {model_name} else ""))}
     summary = build_summary(rows, meta)
     md_path = os.path.join(args.out_dir, f"summary_{stamp}.md")
     with open(md_path, "w", encoding="utf-8") as f:

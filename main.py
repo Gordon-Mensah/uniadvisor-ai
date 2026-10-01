@@ -1098,7 +1098,7 @@ async def translate_document(file: UploadFile = File(...), target_language: str 
     if not file.filename.endswith((".txt",".pdf",".docx")):
         raise HTTPException(status_code=400, detail="Only TXT, PDF, DOCX supported.")
     try:
-        from groq_key_rotator import get_groq_rotator
+        from groq_key_rotator import get_groq_rotator, final_text
         contents = await file.read()
         text = _extract_text(contents, file.filename)
         if len(text) > 8000:
@@ -1107,9 +1107,9 @@ async def translate_document(file: UploadFile = File(...), target_language: str 
         rotator  = get_groq_rotator()
         response = rotator.chat(
             messages=[{"role":"user","content":f"Translate to {lang_name}. Preserve structure. Only output translated text.\n\n{text}"}],
-            max_tokens=4000, temperature=0.1, model="llama-3.1-8b-instant",
+            max_tokens=8192, temperature=0.1,
         )
-        translated   = response.choices[0].message.content
+        translated   = final_text(response)
         new_filename = f"translated_{target_language}_{file.filename.rsplit('.',1)[0]}.txt"
         return {"message":"Translation complete.","filename":new_filename,"language":lang_name,"translated":translated}
     except Exception as e:
