@@ -44,18 +44,20 @@ except ImportError:
     BCRYPT_AVAILABLE = False
     print("[UniAdvisor] WARNING: bcrypt not installed. Run: pip install bcrypt")
 
-# ── Optional supabase ─────────────────────────────────────────────────
+# ── Supabase ──────────────────────────────────────────────────────────
+# The backend uses the service-role key: it bypasses row-level security,
+# which is locked down so the public anon key can only read announcements.
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+if not SUPABASE_KEY:
+    raise RuntimeError(
+        "SUPABASE_SERVICE_ROLE_KEY environment variable is not set. The server will not start without it. "
+        "Find it in Supabase under Project Settings > API (service_role key) and set it in your .env file "
+        "or hosting dashboard. Never expose this key to the frontend."
+    )
 try:
     from supabase import create_client
-    SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-    # The backend needs the service-role key: it bypasses row-level security,
-    # which is locked down so the public anon key can only read announcements.
-    SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-    if not SUPABASE_KEY and os.getenv("SUPABASE_ANON_KEY"):
-        SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
-        print("[UniAdvisor] WARNING: SUPABASE_SERVICE_ROLE_KEY not set, using SUPABASE_ANON_KEY. "
-              "Database calls will fail once row-level security is enabled.")
-    if SUPABASE_URL and SUPABASE_KEY:
+    if SUPABASE_URL:
         sb = create_client(SUPABASE_URL, SUPABASE_KEY)
         SUPABASE_AVAILABLE = True
     else:
