@@ -149,8 +149,9 @@ export default function AdminPortal({ user, token, onLogout }) {
   const fileRef  = useRef();
   const transRef = useRef();
 
+  const auth = { Authorization: `Bearer ${token}` };
   const safeFetch = (url, cb) =>
-    fetch(url).then(r => r.ok ? r.json() : null).then(d => { if (d) cb(d); }).catch(() => {});
+    fetch(url, { headers: auth }).then(r => r.ok ? r.json() : null).then(d => { if (d) cb(d); }).catch(() => {});
 
   useEffect(() => {
     safeFetch(`${API}/stats`,            d => setStats(d));
@@ -178,7 +179,7 @@ export default function AdminPortal({ user, token, onLogout }) {
     if (!annText.trim() || posting) return;
     setPosting(true);
     try {
-      const res = await fetch(`${API}/announcements`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: annText, type: annType }) });
+      const res = await fetch(`${API}/announcements`, { method: "POST", headers: { "Content-Type": "application/json", ...auth }, body: JSON.stringify({ text: annText, type: annType }) });
       const data = await res.json();
       if (res.ok) { setAnns(prev => [data.announcement, ...prev]); setAnnText(""); }
     } catch {}
@@ -186,7 +187,7 @@ export default function AdminPortal({ user, token, onLogout }) {
   };
 
   const deleteAnn = async (id) => {
-    try { await fetch(`${API}/announcements/${id}`, { method: "DELETE" }); setAnns(prev => prev.filter(a => a.id !== id)); } catch {}
+    try { await fetch(`${API}/announcements/${id}`, { method: "DELETE", headers: auth }); setAnns(prev => prev.filter(a => a.id !== id)); } catch {}
   };
 
   const handleUpload = async (e) => {
@@ -194,8 +195,9 @@ export default function AdminPortal({ user, token, onLogout }) {
     setUploading(true); setUploadMsg("");
     const form = new FormData(); form.append("file", file);
     try {
-      const res = await fetch(`${API}/upload-noauth`, {
+      const res = await fetch(`${API}/upload`, {
         method: "POST",
+        headers: auth,
         body: form
       });
       const data = await res.json();
@@ -227,7 +229,7 @@ export default function AdminPortal({ user, token, onLogout }) {
     const txt = replyText[esc.id]; if(!txt?.trim()) return;
     setReplying(esc.id);
     try {
-      await fetch(`${API}/escalations/${esc.id}/reply`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({admin_reply:txt,replied_by:user.full_name||user.email})});
+      await fetch(`${API}/escalations/${esc.id}/reply`,{method:"PATCH",headers:{"Content-Type":"application/json",...auth},body:JSON.stringify({admin_reply:txt})});
       setEscalations(prev=>prev.map(e=>e.id===esc.id?{...e,status:"replied",admin_reply:txt}:e));
       setReplyText(prev=>({...prev,[esc.id]:""}));
     } catch {}
@@ -239,7 +241,7 @@ export default function AdminPortal({ user, token, onLogout }) {
     if(!newEvent.title||!newEvent.starts_at) return;
     setAddingEvent(true);
     try {
-      const res = await fetch(`${API}/events`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...newEvent,created_by:user.email})});
+      const res = await fetch(`${API}/events`,{method:"POST",headers:{"Content-Type":"application/json",...auth},body:JSON.stringify({...newEvent,created_by:user.email})});
       const d = await res.json();
       if(res.ok) { setEvents(prev=>[...prev,d.event]); setNewEvent({title:"",description:"",location:"",starts_at:"",category:"academic"}); }
     } catch {}
@@ -247,7 +249,7 @@ export default function AdminPortal({ user, token, onLogout }) {
   };
 
   const deleteEvent = async (id) => {
-    await fetch(`${API}/events/${id}`,{method:"DELETE"}).catch(()=>{});
+    await fetch(`${API}/events/${id}`,{method:"DELETE",headers:auth}).catch(()=>{});
     setEvents(prev=>prev.filter(e=>e.id!==id));
   };
 

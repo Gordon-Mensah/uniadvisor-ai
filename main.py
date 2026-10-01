@@ -151,6 +151,18 @@ def get_current_user(authorization: str = Header(None)):
 
     raise HTTPException(status_code=401, detail="Session expired — please log in again")
 
+def require_admin(session = Depends(get_current_user)):
+    if session.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return session
+
+def require_self_or_admin(session: dict, email: str):
+    """Students may only access their own records; admins may access anyone's."""
+    if session.get("role") == "admin":
+        return
+    if (email or "").strip().lower() != (session.get("email") or "").strip().lower():
+        raise HTTPException(status_code=403, detail="You can only access your own data")
+
 
 # ═══════════════════════════════════════════════════════════════
 # AUDIT LOG HELPER
@@ -252,7 +264,6 @@ class EscalationCreate(BaseModel):
 
 class EscalationReply(BaseModel):
     admin_reply: str
-    replied_by:  str
 
 class ProgressTaskUpdate(BaseModel):
     student_email: str
@@ -315,18 +326,9 @@ def login(req: LoginRequest):
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    # ── Offline demo fallback (no Supabase) ──────────────────
-    DEMO_USERS = [
-        {"id":1,"email":"student@uniduna.hu","password":"password123","full_name":"Anna Kovács","role":"student","major":"CS Engineering","year_of_study":"Year 2","nationality":"Hungarian","language_pref":"hu","onboarding_done":False},
-        {"id":2,"email":"staff@uniduna.hu",  "password":"password123","full_name":"Dr. Kiss Péter","role":"staff","department":"Study Office","nationality":"Hungarian","language_pref":"hu","onboarding_done":True},
-        {"id":3,"email":"admin@uniduna.hu",  "password":"password123","full_name":"Admin User","role":"admin","nationality":"Hungarian","language_pref":"en","onboarding_done":True},
-    ]
-    for u in DEMO_USERS:
-        if u["email"] == req.email and u["password"] == req.password:
-            token = create_session(u["id"], u["email"], role=u.get("role","student"))
-            safe = {k: v for k, v in u.items() if k != "password"}
-            return {"token": token, "user": safe}
-    raise HTTPException(status_code=401, detail="Invalid email or password")
+    # No Supabase → no user store to check against. Refuse rather than fall back
+    # to hardcoded credentials.
+    raise HTTPException(status_code=503, detail="Login unavailable: user database not connected")
 
 @app.post("/auth/logout")
 def logout(authorization: str = Header(None)):
@@ -367,7 +369,7 @@ def complete_onboarding(session = Depends(get_current_user)):
 # ═══════════════════════════════════════════════════════════════
 
 @app.post("/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, session = Depends(get_current_user)):
     import traceback
     try:
         answer, sources, detected_office = get_answer(
@@ -480,27 +482,6 @@ async def upload_document(file: UploadFile = File(...), office: str = "general",
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/upload-noauth")
-async def upload_document_noauth(file: UploadFile = File(...), office: str = "general"):
-    """Upload endpoint without auth check — frontend already restricts to admin role."""
-    if not file.filename.endswith((".pdf", ".txt", ".docx")):
-        raise HTTPException(status_code=400, detail="Only PDF, TXT, DOCX supported.")
-    try:
-        contents = await file.read()
-        text = _extract_text(contents, file.filename)
-        add_document(text, source=file.filename, office=office)
-        save_docs_to_disk()
-        chunks = doc_count()
-        doc_registry[file.filename] = {
-            "uploaded_at": datetime.now().isoformat(),
-            "size_kb":     round(len(contents) / 1024, 1),
-            "chunks":      chunks,
-            "office":      office,
-        }
-        return {"message": f"'{file.filename}' ingested.", "chunks": chunks}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.get("/documents")
 def documents():
     enriched = []
@@ -553,7 +534,7 @@ def get_announcements():
     return {"announcements": [a for a in announcements if a["active"]]}
 
 @app.post("/announcements")
-def create_announcement(item: AnnouncementCreate):
+def create_announcement(item: AnnouncementCreate, session = Depends(require_admin)):
     ann = {
         "text":         item.text,
         "type":         item.type,
@@ -573,7 +554,7 @@ def create_announcement(item: AnnouncementCreate):
     return {"message": "Announcement created.", "announcement": ann}
 
 @app.delete("/announcements/{ann_id}")
-def delete_announcement(ann_id: int):
+def delete_announcement(ann_id: int, session = Depends(require_admin)):
     if SUPABASE_AVAILABLE:
         try:
             sb.table("announcements").update({"active": False}).eq("id", ann_id).execute()
@@ -592,7 +573,7 @@ def delete_announcement(ann_id: int):
 # ═══════════════════════════════════════════════════════════════
 
 @app.post("/feedback")
-def submit_feedback(item: FeedbackItem):
+def submit_feedback(item: FeedbackItem, session = Depends(get_current_user)):
     entry = {
         "student_email": item.student_email,
         "question":      item.question,
@@ -618,7 +599,7 @@ def submit_feedback(item: FeedbackItem):
     return {"message": "Feedback recorded. Thank you!"}
 
 @app.get("/feedback")
-def get_feedback():
+def get_feedback(session = Depends(require_admin)):
     if SUPABASE_AVAILABLE:
         try:
             result = sb.table("feedback").select("*").order("created_at", desc=True).limit(100).execute()
@@ -648,7 +629,7 @@ def get_feedback():
             "score": round((ups/total*100) if total > 0 else 0, 1), "recent": feedback_log[-5:]}
 
 @app.get("/debug/indexed-documents")
-def debug_indexed_documents():
+def debug_indexed_documents(session = Depends(require_admin)):
     """Show what documents are currently indexed in memory (for debugging)."""
     from rag import _doc_chunks, _doc_lock, OFFICES
     with _doc_lock:
@@ -671,7 +652,7 @@ def debug_indexed_documents():
     }
 
 @app.get("/debug/search")
-def debug_search(q: str, office: str = "auto"):
+def debug_search(q: str, office: str = "auto", session = Depends(require_admin)):
     """Test BM25 search directly (for debugging)."""
     from rag import _bm25_search, detect_office
     
@@ -747,7 +728,7 @@ def office_analytics():
 # ═══════════════════════════════════════════════════════════════
 
 @app.get("/escalations")
-def get_escalations(status: Optional[str] = None):
+def get_escalations(status: Optional[str] = None, session = Depends(require_admin)):
     if not SUPABASE_AVAILABLE:
         return {"escalations": []}
     try:
@@ -760,7 +741,7 @@ def get_escalations(status: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/escalations")
-def create_escalation(item: EscalationCreate):
+def create_escalation(item: EscalationCreate, session = Depends(get_current_user)):
     entry = {
         "student_email": item.student_email,
         "student_name":  item.student_name,
@@ -778,24 +759,25 @@ def create_escalation(item: EscalationCreate):
     return {"message": "Escalation submitted (offline).", "escalation": entry}
 
 @app.patch("/escalations/{esc_id}/reply")
-def reply_escalation(esc_id: int, reply: EscalationReply):
+def reply_escalation(esc_id: int, reply: EscalationReply, session = Depends(require_admin)):
     if not SUPABASE_AVAILABLE:
         raise HTTPException(status_code=503, detail="Supabase not connected")
     try:
         result = sb.table("escalations").update({
             "admin_reply": reply.admin_reply,
-            "replied_by":  reply.replied_by,
+            "replied_by":  session["email"],
             "replied_at":  datetime.now().isoformat(),
             "status":      "replied",
         }).eq("id", esc_id).execute()
-        audit(reply.replied_by, "admin", "REPLY_ESCALATION", f"escalation:{esc_id}")
+        audit(session["email"], session["role"], "REPLY_ESCALATION", f"escalation:{esc_id}")
         return {"message": "Reply sent.", "escalation": result.data[0] if result.data else {}}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/escalations/student/{email}")
-def student_escalations(email: str):
+def student_escalations(email: str, session = Depends(get_current_user)):
     """Called by student chat to show their own escalation replies."""
+    require_self_or_admin(session, email)
     if not SUPABASE_AVAILABLE:
         return {"escalations": []}
     try:
@@ -822,7 +804,8 @@ DEFAULT_TASKS = [
 ]
 
 @app.get("/progress/{student_email}")
-def get_progress(student_email: str):
+def get_progress(student_email: str, session = Depends(get_current_user)):
+    require_self_or_admin(session, student_email)
     if SUPABASE_AVAILABLE:
         try:
             result = sb.table("progress_tasks").select("*").eq("student_email", student_email).execute()
@@ -842,7 +825,8 @@ def get_progress(student_email: str):
     return {"tasks": [{**t, "done": False, "done_at": None} for t in DEFAULT_TASKS], "done": 0, "total": len(DEFAULT_TASKS)}
 
 @app.post("/progress")
-def update_progress(item: ProgressTaskUpdate):
+def update_progress(item: ProgressTaskUpdate, session = Depends(get_current_user)):
+    require_self_or_admin(session, item.student_email)
     if SUPABASE_AVAILABLE:
         try:
             sb.table("progress_tasks").upsert({
@@ -873,7 +857,7 @@ def get_events():
     return {"events": []}
 
 @app.post("/events")
-def create_event(item: EventCreate):
+def create_event(item: EventCreate, session = Depends(require_admin)):
     entry = {
         "title":       item.title,
         "description": item.description,
@@ -892,7 +876,7 @@ def create_event(item: EventCreate):
     return {"message": "Event created (offline).", "event": entry}
 
 @app.delete("/events/{event_id}")
-def delete_event(event_id: int):
+def delete_event(event_id: int, session = Depends(require_admin)):
     if SUPABASE_AVAILABLE:
         try:
             sb.table("campus_events").delete().eq("id", event_id).execute()
@@ -907,7 +891,7 @@ def delete_event(event_id: int):
 # ═══════════════════════════════════════════════════════════════
 
 @app.get("/audit-log")
-def get_audit_log(limit: int = 50):
+def get_audit_log(limit: int = 50, session = Depends(require_admin)):
     if SUPABASE_AVAILABLE:
         try:
             result = sb.table("audit_log").select("*").order("created_at", desc=True).limit(limit).execute()

@@ -1,0 +1,967 @@
+[
+  {
+    "id": "Q01",
+    "language": "en",
+    "category": "fees",
+    "answerable": true,
+    "question": "How much is the registration fee I have to pay when I apply?",
+    "expected_answer": "The registration fee is 200 EUR and must be paid before the application can be submitted.",
+    "key_facts": [
+      [
+        "200"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/application/application-process/how-to-apply",
+    "source_passage": "Pay the registration fee (200 EUR) - see bank account details below."
+  },
+  {
+    "id": "Q02",
+    "language": "hu",
+    "category": "fees",
+    "answerable": true,
+    "question": "Mennyi a jelentkezési díj, amit a jelentkezéskor fizetni kell?",
+    "expected_answer": "A jelentkezési (regisztrációs) díj 200 EUR.",
+    "key_facts": [
+      [
+        "200"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/application/application-process/how-to-apply",
+    "source_passage": "Pay the registration fee (200 EUR) - see bank account details below."
+  },
+  {
+    "id": "Q03",
+    "language": "en",
+    "category": "fees",
+    "answerable": true,
+    "question": "If my application is rejected, will I get the registration fee back?",
+    "expected_answer": "No. The registration fee is non-refundable.",
+    "key_facts": [
+      [
+        "non-refundable",
+        "not refundable",
+        "non refundable",
+        "nem visszaterit"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/application/fees-and-payment",
+    "source_passage": "Please note the registration fee is non-refundable."
+  },
+  {
+    "id": "Q04",
+    "language": "en",
+    "category": "fees",
+    "answerable": true,
+    "question": "What is the university's IBAN for paying fees?",
+    "expected_answer": "HU26 1030 0002 1326 1517 0002 4886 (account holder: Dunaújvárosi Egyetem, MBH Bank).",
+    "key_facts": [
+      [
+        "HU26 1030 0002 1326 1517 0002 4886"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/application/fees-and-payment",
+    "source_passage": "IBAN ACCOUNT NR: HU26 1030 0002 1326 1517 0002 4886"
+  },
+  {
+    "id": "Q05",
+    "language": "en",
+    "category": "fees",
+    "answerable": true,
+    "question": "What do I write in the statement field when I transfer the registration fee?",
+    "expected_answer": "\"Registration fee\" + your DreamApply Applicant ID + your name, e.g. \"Registration fee ID260 JANE DOE\".",
+    "key_facts": [
+      [
+        "dreamapply",
+        "id260"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/application/application-process/how-to-apply",
+    "source_passage": "Statement : Registration fee + your DreamApply Applicant ID + Your name"
+  },
+  {
+    "id": "Q06",
+    "language": "en",
+    "category": "fees",
+    "answerable": true,
+    "question": "Can I pay the admission fees in instalments?",
+    "expected_answer": "No, admission-related fees cannot be paid in instalments.",
+    "key_facts": [
+      [
+        "not possible",
+        "cannot",
+        "can't",
+        "can not",
+        "not allowed",
+        "no,"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/application/admission-faq",
+    "source_passage": "Unfortunately it is not possible to pay the admission-related fees in instalments."
+  },
+  {
+    "id": "Q07",
+    "language": "en",
+    "category": "fees",
+    "answerable": true,
+    "question": "How much does the Preparatory Year Program cost?",
+    "expected_answer": "4100 Euro (3950 EUR tuition for one academic year + 150 EUR for course material).",
+    "key_facts": [
+      [
+        "4100"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/education/special-programs/preparatory-year-program",
+    "source_passage": "4100 Euro (3950 Euro tuition fee for 1 academic year + 150 Euro for course material)"
+  },
+  {
+    "id": "Q08",
+    "language": "en",
+    "category": "deadlines",
+    "answerable": true,
+    "question": "When does the application period start and end?",
+    "expected_answer": "From 11 February to 31 May each year.",
+    "key_facts": [
+      [
+        "11 february",
+        "february 11",
+        "11th february",
+        "february 11th"
+      ],
+      [
+        "31 may",
+        "may 31",
+        "31st may",
+        "may 31st"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/application/application-period",
+    "source_passage": "Our application period starts on 11 February and ends on 31 May each year."
+  },
+  {
+    "id": "Q09",
+    "language": "hu",
+    "category": "deadlines",
+    "answerable": true,
+    "question": "Mikor kezdődik és mikor ér véget a jelentkezési időszak?",
+    "expected_answer": "Minden évben február 11-től május 31-ig.",
+    "key_facts": [
+      [
+        "11"
+      ],
+      [
+        "31"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/application/application-period",
+    "source_passage": "Our application period starts on 11 February and ends on 31 May each year."
+  },
+  {
+    "id": "Q10",
+    "language": "en",
+    "category": "deadlines",
+    "answerable": true,
+    "question": "Can I start a bachelor program in February?",
+    "expected_answer": "No. English-taught programs start in September; there are no bachelor or master programs starting in February.",
+    "key_facts": [
+      [
+        "september",
+        "szeptember"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/application/admission-faq",
+    "source_passage": "Our English taught programs are launched in September each year. We do not have bachelor or master programs starting in February."
+  },
+  {
+    "id": "Q11",
+    "language": "en",
+    "category": "admission",
+    "answerable": true,
+    "question": "What IELTS score do I need for a bachelor program?",
+    "expected_answer": "A minimum IELTS score of 5.5 (or equivalent EF SET, TOEFL, TOEIC or Duolingo result).",
+    "key_facts": [
+      [
+        "5.5"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/application/application-checklist",
+    "source_passage": "for bachelor program we require a minimum IELTS score of 5.5 or an equivalent level of English proficiency from one of the following exams: EF SET, TOEFL,TOEIC or Duolingo"
+  },
+  {
+    "id": "Q12",
+    "language": "hu",
+    "category": "admission",
+    "answerable": true,
+    "question": "Milyen IELTS pontszám kell a mesterképzésre való jelentkezéshez?",
+    "expected_answer": "Legalább 6.5-ös IELTS pontszám (vagy ezzel egyenértékű nyelvvizsga).",
+    "key_facts": [
+      [
+        "6.5"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/application/application-checklist",
+    "source_passage": "for master program we require a minimum IELTS score of 6.5 or an equivalent level of English proficiency from one of the following exams: EF SET, TOEFL, TOEIC or Duolingo"
+  },
+  {
+    "id": "Q13",
+    "language": "en",
+    "category": "visa",
+    "answerable": true,
+    "question": "What kind of visa do I need as a student from outside the EEA?",
+    "expected_answer": "A long-term \"D\" type visa for study purposes, applied for at the Hungarian Consulate in your country of residence.",
+    "key_facts": [
+      [
+        "d type",
+        "type d",
+        "d-type",
+        "d visa"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/prepare-for-your-stay/visa",
+    "source_passage": "a long-term \"D\" type visa for study purposes"
+  },
+  {
+    "id": "Q14",
+    "language": "en",
+    "category": "visa",
+    "answerable": true,
+    "question": "How long can the visa application process take?",
+    "expected_answer": "In some cases up to three months, or even longer if information is missing.",
+    "key_facts": [
+      [
+        "three months",
+        "3 months",
+        "harom honap",
+        "3 honap"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/prepare-for-your-stay/visa",
+    "source_passage": "Please note that you will have to reserve an appointment for the visa application, because in some cases the process can take up to three months, or even longer for visa applications with missing information."
+  },
+  {
+    "id": "Q15",
+    "language": "en",
+    "category": "visa",
+    "answerable": true,
+    "question": "I am an EU citizen. Do I need a study visa?",
+    "expected_answer": "No. EU/EEA citizens can travel without a long-term study visa, but they must obtain a registration card for the duration of their studies.",
+    "key_facts": [
+      [
+        "registration card",
+        "registration certificate"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/prepare-for-your-stay/visa",
+    "source_passage": "Citizens of EU/EEA (EEA: member states of the EU and Norway, Switzerland, Iceland, and Lichtenstein) may travel to Hungary without a long-term study visa. However they need to obtain a registration card for the duration of the studies in Hungary."
+  },
+  {
+    "id": "Q16",
+    "language": "en",
+    "category": "visa",
+    "answerable": true,
+    "question": "After arriving with my D visa, how long do I have to apply for a residence permit?",
+    "expected_answer": "30 days, and the application must be submitted electronically.",
+    "key_facts": [
+      [
+        "30"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/residence-documents/first-time-application",
+    "source_passage": "you have 30 days to submit your application for residence permit electronically via the website of the Immigration Office"
+  },
+  {
+    "id": "Q17",
+    "language": "hu",
+    "category": "visa",
+    "answerable": true,
+    "question": "Megérkeztem D típusú vízummal. Hány napon belül kell beadnom a tartózkodási engedély iránti kérelmet?",
+    "expected_answer": "30 napon belül, elektronikusan.",
+    "key_facts": [
+      [
+        "30"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/residence-documents/first-time-application",
+    "source_passage": "you have 30 days to submit your application for residence permit electronically via the website of the Immigration Office"
+  },
+  {
+    "id": "Q18",
+    "language": "en",
+    "category": "visa",
+    "answerable": true,
+    "question": "When should I apply to renew my residence permit?",
+    "expected_answer": "No earlier than 45 days and no later than 30 days before the current permit expires.",
+    "key_facts": [
+      [
+        "45"
+      ],
+      [
+        "30"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/residence-documents/renewal",
+    "source_passage": "you have to apply for a residence permit no earlier than 45 days and no later than 30 days before the expiry date of your previous residence permit."
+  },
+  {
+    "id": "Q19",
+    "language": "en",
+    "category": "visa",
+    "answerable": true,
+    "question": "How much does it cost to extend my residence permit?",
+    "expected_answer": "35.000 HUF (free of charge for scholarship holders).",
+    "key_facts": [
+      [
+        "35000"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/residence-documents/renewal",
+    "source_passage": "When submitting the above document you will have to pay the fee for extension 35.000 HUF."
+  },
+  {
+    "id": "Q20",
+    "language": "hu",
+    "category": "visa",
+    "answerable": true,
+    "question": "Mennyibe kerül a tartózkodási engedély meghosszabbítása?",
+    "expected_answer": "35.000 Ft; ösztöndíjasoknak ingyenes.",
+    "key_facts": [
+      [
+        "35000"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/residence-documents/renewal",
+    "source_passage": "When submitting the above document you will have to pay the fee for extension 35.000 HUF."
+  },
+  {
+    "id": "Q21",
+    "language": "en",
+    "category": "offices",
+    "answerable": true,
+    "question": "Where is the immigration office I need to visit for biometrics?",
+    "expected_answer": "The Regional Directorate of Aliens Policing in Székesfehérvár, József Attila u. 38.",
+    "key_facts": [
+      [
+        "szekesfehervar"
+      ],
+      [
+        "jozsef attila"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/residence-documents/renewal",
+    "source_passage": "8000 Székesfehérvár, József Attila u. 38."
+  },
+  {
+    "id": "Q22",
+    "language": "en",
+    "category": "visa",
+    "answerable": true,
+    "question": "I am moving to a new flat. Do I have to notify the immigration authorities?",
+    "expected_answer": "Yes, notifying the Regional Directorate for Aliens Policing (OIF) of an address change is obligatory; it is done online via Enter Hungary.",
+    "key_facts": [
+      [
+        "obligatory",
+        "must",
+        "required",
+        "have to",
+        "need to",
+        "mandatory"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/residence-documents/address-change",
+    "source_passage": "According to the Regional Directorate for Aliens Policing (OIF) it is obligatory to notify them in case of changing your address."
+  },
+  {
+    "id": "Q23",
+    "language": "hu",
+    "category": "visa",
+    "answerable": true,
+    "question": "Elköltözöm egy új albérletbe. Kötelező bejelentenem az idegenrendészetnek?",
+    "expected_answer": "Igen, a lakcímváltozást kötelező bejelenteni az OIF-nek, elektronikusan (Enter Hungary).",
+    "key_facts": [
+      [
+        "kotelezo",
+        "kell",
+        "must",
+        "obligatory",
+        "igen"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/residence-documents/address-change",
+    "source_passage": "According to the Regional Directorate for Aliens Policing (OIF) it is obligatory to notify them in case of changing your address."
+  },
+  {
+    "id": "Q24",
+    "language": "en",
+    "category": "neptun",
+    "answerable": true,
+    "question": "What is my default Neptun password when I log in for the first time?",
+    "expected_answer": "\"Ne\" followed by your date of birth in the form NeYYYYMMDD; it must be changed immediately.",
+    "key_facts": [
+      [
+        "neyyyymmdd",
+        "date of birth",
+        "birth date",
+        "birthdate",
+        "szuletesi"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/study-office/neptun-system",
+    "source_passage": "When you first log in, the default password is “Ne” and your date of birth in the following form: NeYYYYMMDD"
+  },
+  {
+    "id": "Q25",
+    "language": "hu",
+    "category": "neptun",
+    "answerable": true,
+    "question": "Mi az alapértelmezett Neptun jelszó az első bejelentkezéskor?",
+    "expected_answer": "\"Ne\" + a születési dátum NeÉÉÉÉHHNN formában; azonnal meg kell változtatni.",
+    "key_facts": [
+      [
+        "neyyyymmdd",
+        "szuletesi",
+        "date of birth",
+        "birth"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/study-office/neptun-system",
+    "source_passage": "When you first log in, the default password is “Ne” and your date of birth in the following form: NeYYYYMMDD"
+  },
+  {
+    "id": "Q26",
+    "language": "en",
+    "category": "neptun",
+    "answerable": true,
+    "question": "Where do I register for exams in Neptun?",
+    "expected_answer": "Exams > Exam registration.",
+    "key_facts": [
+      [
+        "exam registration"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/online-platforms",
+    "source_passage": "Registration for exam: Exams > Exam registration"
+  },
+  {
+    "id": "Q27",
+    "language": "en",
+    "category": "neptun",
+    "answerable": true,
+    "question": "The deadline for a Neptun request has passed. Can I still submit it?",
+    "expected_answer": "No. Once the deadline expires the application disappears from the list and cannot be submitted later.",
+    "key_facts": [
+      [
+        "cannot",
+        "can't",
+        "can not",
+        "not possible",
+        "not allowed",
+        "no longer",
+        "disappear"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/study-office/neptun-requests",
+    "source_passage": "You cannot submit an application after the deadline and you will not be allowed to submit it later!"
+  },
+  {
+    "id": "Q28",
+    "language": "en",
+    "category": "moodle",
+    "answerable": true,
+    "question": "What are my Moodle login details?",
+    "expected_answer": "The same as Neptun: username is your Neptun code, password is your (changed) Neptun password.",
+    "key_facts": [
+      [
+        "neptun code",
+        "neptun-code",
+        "neptun kod"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/online-platforms",
+    "source_passage": "Moodle’s log in datas are the same as Neptun’s. Username is Neptun code and the Password is your new (already changed) Neptun password."
+  },
+  {
+    "id": "Q29",
+    "language": "hu",
+    "category": "moodle",
+    "answerable": true,
+    "question": "Milyen adatokkal tudok belépni a Moodle-be?",
+    "expected_answer": "Ugyanazokkal, mint a Neptunba: a felhasználónév a Neptun-kód, a jelszó a (megváltoztatott) Neptun jelszó.",
+    "key_facts": [
+      [
+        "neptun"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/online-platforms",
+    "source_passage": "Moodle’s log in datas are the same as Neptun’s. Username is Neptun code and the Password is your new (already changed) Neptun password."
+  },
+  {
+    "id": "Q30",
+    "language": "en",
+    "category": "housing",
+    "answerable": true,
+    "question": "How much does the university hostel cost?",
+    "expected_answer": "125 € per month.",
+    "key_facts": [
+      [
+        "125"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/accomodation",
+    "source_passage": "The price of the hostel is 125 €/month."
+  },
+  {
+    "id": "Q31",
+    "language": "hu",
+    "category": "housing",
+    "answerable": true,
+    "question": "Mennyibe kerül a kollégium havonta?",
+    "expected_answer": "Havi 125 €.",
+    "key_facts": [
+      [
+        "125"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/accomodation",
+    "source_passage": "The price of the hostel is 125 €/month."
+  },
+  {
+    "id": "Q32",
+    "language": "en",
+    "category": "housing",
+    "answerable": true,
+    "question": "As a first-year international student, am I guaranteed a place in the hostel?",
+    "expected_answer": "Yes, every first-year international student is automatically offered a place in the university hostel.",
+    "key_facts": [
+      [
+        "automatic",
+        "guarantee",
+        "every first-year",
+        "all first-year"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/accomodation",
+    "source_passage": "Therefore we offer a place in the hostel of the university for every first-year international students automatically."
+  },
+  {
+    "id": "Q33",
+    "language": "en",
+    "category": "fees",
+    "answerable": true,
+    "question": "How much money do I need per month to live in Dunaújváros?",
+    "expected_answer": "At least HUF 150,000 (≈ EUR 400) per month; more if you rent a flat.",
+    "key_facts": [
+      [
+        "150000",
+        "400"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/living-costs",
+    "source_passage": "To be able to pay your hostel fee, buy proper food and afford an occasional evening out, you need a minimum of HUF 150,000 (≈EUR 400) per month."
+  },
+  {
+    "id": "Q34",
+    "language": "hu",
+    "category": "fees",
+    "answerable": true,
+    "question": "Mennyi pénzre van szükségem havonta a megélhetéshez Dunaújvárosban?",
+    "expected_answer": "Legalább havi 150.000 Ft (kb. 400 EUR).",
+    "key_facts": [
+      [
+        "150000",
+        "400"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/living-costs",
+    "source_passage": "To be able to pay your hostel fee, buy proper food and afford an occasional evening out, you need a minimum of HUF 150,000 (≈EUR 400) per month."
+  },
+  {
+    "id": "Q35",
+    "language": "en",
+    "category": "campus",
+    "answerable": true,
+    "question": "How do I get from Budapest airport to Dunaújváros?",
+    "expected_answer": "Take bus 200E to Kőbánya-Kispest, the metro to Népliget bus station, then the long-distance bus to Dunaújváros (Dózsa Mozi stop).",
+    "key_facts": [
+      [
+        "200e"
+      ],
+      [
+        "nepliget"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/prepare-for-your-stay/how-to-get-to-dunaújváros",
+    "source_passage": "The bus line number „200E” will take you from the airport to KŐBÁNYA-KISPEST where metro line"
+  },
+  {
+    "id": "Q36",
+    "language": "en",
+    "category": "health",
+    "answerable": true,
+    "question": "How much does the Generali student health insurance cost?",
+    "expected_answer": "105.000 HUF per year (as of 2024).",
+    "key_facts": [
+      [
+        "105000"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/health-insurance",
+    "source_passage": "The basic charge for the health insurance for one year is 105.000 HUF (as of 2024)."
+  },
+  {
+    "id": "Q37",
+    "language": "hu",
+    "category": "health",
+    "answerable": true,
+    "question": "Mennyibe kerül a Generali hallgatói egészségbiztosítás egy évre?",
+    "expected_answer": "Évi 105.000 Ft (2024-es adat).",
+    "key_facts": [
+      [
+        "105000"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/health-insurance",
+    "source_passage": "The basic charge for the health insurance for one year is 105.000 HUF (as of 2024)."
+  },
+  {
+    "id": "Q38",
+    "language": "en",
+    "category": "health",
+    "answerable": true,
+    "question": "From when to when is the student health insurance valid?",
+    "expected_answer": "For one year, from 1 September until 31 August the following year.",
+    "key_facts": [
+      [
+        "1 september",
+        "september 1",
+        "1st september",
+        "september 1st"
+      ],
+      [
+        "31 august",
+        "august 31",
+        "31st august",
+        "august 31st"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/health-insurance",
+    "source_passage": "The insurance is valid for 1 whole year: from 1 September till 31 August the next year."
+  },
+  {
+    "id": "Q39",
+    "language": "en",
+    "category": "health",
+    "answerable": true,
+    "question": "What is the emergency phone number in Hungary?",
+    "expected_answer": "112 (ambulance 104, fire brigade 105, police 107).",
+    "key_facts": [
+      [
+        "112"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/useful-telephone-numbers",
+    "source_passage": "EMERGENCY LINE: 112"
+  },
+  {
+    "id": "Q40",
+    "language": "hu",
+    "category": "health",
+    "answerable": true,
+    "question": "Mi az általános segélyhívó szám Magyarországon?",
+    "expected_answer": "112.",
+    "key_facts": [
+      [
+        "112"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/useful-telephone-numbers",
+    "source_passage": "EMERGENCY LINE: 112"
+  },
+  {
+    "id": "Q41",
+    "language": "en",
+    "category": "fees",
+    "answerable": true,
+    "question": "What documents do I need to open a Hungarian bank account?",
+    "expected_answer": "Valid passport, valid residence permit card, address card and a Student Status Certificate from the Study Office.",
+    "key_facts": [
+      [
+        "passport",
+        "utlevel"
+      ],
+      [
+        "residence permit",
+        "tartozkodasi"
+      ],
+      [
+        "address card",
+        "lakcimkartya"
+      ],
+      [
+        "student status",
+        "hallgatoi jogviszony"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/hungarian-bank-account",
+    "source_passage": "Student Status Certificate (issued by the Study Office)"
+  },
+  {
+    "id": "Q42",
+    "language": "en",
+    "category": "campus",
+    "answerable": true,
+    "question": "How do I get my student card?",
+    "expected_answer": "Get a Student Status Certificate from the Study Office, visit the Certificate Office (Kormányablak) to obtain the 16-digit NEK identifier, enter it in Neptun (Administration > Student Card request), then collect a temporary card and later the plastic card.",
+    "key_facts": [
+      [
+        "nek"
+      ],
+      [
+        "kormanyablak",
+        "certificate office",
+        "government"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/student-card",
+    "source_passage": "Part of this document is the 16-digit-long NEK (Nemzeti Egységes Kártyarendszer) identifier that is necessary for the obtaining process."
+  },
+  {
+    "id": "Q43",
+    "language": "en",
+    "category": "campus",
+    "answerable": true,
+    "question": "How many books can I borrow from the library and for how long?",
+    "expected_answer": "Up to 6 books, for 4 weeks.",
+    "key_facts": [
+      [
+        "6",
+        "six",
+        "hat"
+      ],
+      [
+        "4 weeks",
+        "four weeks",
+        "4 het",
+        "negy het"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/library",
+    "source_passage": "Books can be kept for 4 weeks. Students can borrow max. 6 books."
+  },
+  {
+    "id": "Q44",
+    "language": "hu",
+    "category": "campus",
+    "answerable": true,
+    "question": "Hány könyvet kölcsönözhetek a könyvtárból, és mennyi időre?",
+    "expected_answer": "Legfeljebb 6 könyvet, 4 hétre.",
+    "key_facts": [
+      [
+        "6",
+        "hat"
+      ],
+      [
+        "4",
+        "negy"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/library",
+    "source_passage": "Books can be kept for 4 weeks. Students can borrow max. 6 books."
+  },
+  {
+    "id": "Q45",
+    "language": "en",
+    "category": "offices",
+    "answerable": true,
+    "question": "Where is the Study Office's personal consultation office?",
+    "expected_answer": "Building \"F\", ground floor, room 13/b; booking an appointment by email is recommended.",
+    "key_facts": [
+      [
+        "13/b",
+        "13b",
+        "13 b"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/study-office/about-so",
+    "source_passage": "Personal Consultation Office: Building \"F\", Ground floor, room nr. 13/b. Booking an appointment via email is highly recommended!"
+  },
+  {
+    "id": "Q46",
+    "language": "hu",
+    "category": "offices",
+    "answerable": true,
+    "question": "Hol található a Tanulmányi Osztály személyes ügyfélszolgálata?",
+    "expected_answer": "Az \"F\" épület földszintjén, a 13/b teremben.",
+    "key_facts": [
+      [
+        "13/b",
+        "13b",
+        "13 b"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/study-office/about-so",
+    "source_passage": "Personal Consultation Office: Building \"F\", Ground floor, room nr. 13/b. Booking an appointment via email is highly recommended!"
+  },
+  {
+    "id": "Q47",
+    "language": "en",
+    "category": "offices",
+    "answerable": true,
+    "question": "Where is the International Relations Directorate located?",
+    "expected_answer": "H-2400 Dunaújváros, Táncsics M. 1/A., Building \"F\" (F-118).",
+    "key_facts": [
+      [
+        "f-118",
+        "f118",
+        "f 118"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/about-us/contacts",
+    "source_passage": "Building \"F\" (F-118)"
+  },
+  {
+    "id": "Q48",
+    "language": "en",
+    "category": "health",
+    "answerable": true,
+    "question": "I'm a self-financed student and I'm sick. Which doctor should I go to?",
+    "expected_answer": "Dr. Ildikó Kemény, 2400 Dunaújváros, Liget köz 7. (appointment: +36 70 618 1758); self-financed students have no TAJ number.",
+    "key_facts": [
+      [
+        "kemeny"
+      ]
+    ],
+    "source_url": "https://www.uniduna.hu/en/for-students/medical-information/medical-care-self-financed-study-more",
+    "source_passage": "Dr. Ildikó Kemény"
+  },
+  {
+    "id": "Q49",
+    "language": "en",
+    "category": "campus",
+    "answerable": false,
+    "question": "How much does it cost to park a car on campus per month?",
+    "expected_answer": null,
+    "key_facts": [],
+    "source_url": null,
+    "source_passage": null
+  },
+  {
+    "id": "Q50",
+    "language": "en",
+    "category": "housing",
+    "answerable": false,
+    "question": "Can I keep a dog in my room in the student hostel?",
+    "expected_answer": null,
+    "key_facts": [],
+    "source_url": null,
+    "source_passage": null
+  },
+  {
+    "id": "Q51",
+    "language": "en",
+    "category": "campus",
+    "answerable": false,
+    "question": "What is on the canteen menu this week?",
+    "expected_answer": null,
+    "key_facts": [],
+    "source_url": null,
+    "source_passage": null
+  },
+  {
+    "id": "Q52",
+    "language": "en",
+    "category": "fees",
+    "answerable": false,
+    "question": "What is the tuition fee for the Medicine (MD) program?",
+    "expected_answer": null,
+    "key_facts": [],
+    "source_url": null,
+    "source_passage": null
+  },
+  {
+    "id": "Q53",
+    "language": "en",
+    "category": "deadlines",
+    "answerable": false,
+    "question": "What is the exact date of my Calculus 2 exam in the spring 2026 semester?",
+    "expected_answer": null,
+    "key_facts": [],
+    "source_url": null,
+    "source_passage": null
+  },
+  {
+    "id": "Q54",
+    "language": "en",
+    "category": "neptun",
+    "answerable": false,
+    "question": "What grade did I get in Databases last semester?",
+    "expected_answer": null,
+    "key_facts": [],
+    "source_url": null,
+    "source_passage": null
+  },
+  {
+    "id": "Q55",
+    "language": "en",
+    "category": "offices",
+    "answerable": false,
+    "question": "What is the phone number of the Nigerian embassy in Budapest?",
+    "expected_answer": null,
+    "key_facts": [],
+    "source_url": null,
+    "source_passage": null
+  },
+  {
+    "id": "Q56",
+    "language": "en",
+    "category": "campus",
+    "answerable": false,
+    "question": "Is there a night bus from Budapest to Dunaújváros after midnight?",
+    "expected_answer": null,
+    "key_facts": [],
+    "source_url": null,
+    "source_passage": null
+  },
+  {
+    "id": "Q57",
+    "language": "hu",
+    "category": "campus",
+    "answerable": false,
+    "question": "Mennyibe kerül a parkolás az egyetem területén?",
+    "expected_answer": null,
+    "key_facts": [],
+    "source_url": null,
+    "source_passage": null
+  },
+  {
+    "id": "Q58",
+    "language": "hu",
+    "category": "housing",
+    "answerable": false,
+    "question": "Tarthatok kutyát a kollégiumi szobámban?",
+    "expected_answer": null,
+    "key_facts": [],
+    "source_url": null,
+    "source_passage": null
+  },
+  {
+    "id": "Q59",
+    "language": "hu",
+    "category": "fees",
+    "answerable": false,
+    "question": "Mennyi az Orvostudományi (általános orvos) képzés tandíja?",
+    "expected_answer": null,
+    "key_facts": [],
+    "source_url": null,
+    "source_passage": null
+  },
+  {
+    "id": "Q60",
+    "language": "hu",
+    "category": "campus",
+    "answerable": false,
+    "question": "Mi a heti menü a menzán?",
+    "expected_answer": null,
+    "key_facts": [],
+    "source_url": null,
+    "source_passage": null
+  }
+]
