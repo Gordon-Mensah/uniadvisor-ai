@@ -164,24 +164,24 @@ function OnboardingModal({ C, uiLang, onDone }) {
   );
 }
 
-function ProgressPanel({ C, user, uiLang, onClose }) {
+function ProgressPanel({ C, user, token, uiLang, onClose }) {
   const [tasks,setTasks] = useState([]);
   const [done,setDone]   = useState(0);
   const [total,setTotal] = useState(0);
   const [saving,setSaving] = useState(null);
 
   useEffect(()=>{
-    fetch(`${API}/progress/${encodeURIComponent(user.email)}`)
+    fetch(`${API}/progress/${encodeURIComponent(user.email)}`,{headers:{Authorization:`Bearer ${token}`}})
       .then(r=>r.json()).then(d=>{ setTasks(d.tasks||[]); setDone(d.done||0); setTotal(d.total||0); })
       .catch(()=>{});
-  },[user.email]);
+  },[user.email,token]);
 
   const toggle = async (task) => {
     const newDone = !task.done;
     setSaving(task.task_key);
     setTasks(prev=>prev.map(t=>t.task_key===task.task_key?{...t,done:newDone}:t));
     setDone(prev=>prev+(newDone?1:-1));
-    await fetch(`${API}/progress`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({student_email:user.email,task_key:task.task_key,label:task.label,done:newDone})}).catch(()=>{});
+    await fetch(`${API}/progress`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({student_email:user.email,task_key:task.task_key,label:task.label,done:newDone})}).catch(()=>{});
     setSaving(null);
   };
 
@@ -273,12 +273,12 @@ function EventsPanel({ C, uiLang, onClose }) {
   );
 }
 
-function RepliesPanel({ C, user, uiLang, onClose }) {
+function RepliesPanel({ C, user, token, uiLang, onClose }) {
   const [replies,setReplies] = useState([]);
   const [loading,setLoading] = useState(true);
 
   useEffect(()=>{
-    fetch(`${API}/escalations/student/${encodeURIComponent(user.email)}`)
+    fetch(`${API}/escalations/student/${encodeURIComponent(user.email)}`,{headers:{Authorization:`Bearer ${token}`}})
       .then(r=>r.json()).then(d=>{ setReplies((d.escalations||[]).filter(e=>e.admin_reply)); setLoading(false); })
       .catch(()=>setLoading(false));
   },[user.email]);
@@ -534,7 +534,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[messages,loading]);
   useEffect(()=>{
-    fetch(`${API}/escalations/student/${encodeURIComponent(user.email)}`)
+    fetch(`${API}/escalations/student/${encodeURIComponent(user.email)}`,{headers:{Authorization:`Bearer ${token}`}})
       .then(r=>r.json()).then(d=>{ setRepliesCount((d.escalations||[]).filter(e=>e.admin_reply&&e.status==="replied").length); })
       .catch(()=>{});
   },[user.email]);
@@ -545,7 +545,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
   };
 
   const sendFeedback = useCallback(async (rating,msg) => {
-    await fetch(`${API}/feedback`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({student_email:user.email,question:msg.question||"",answer:msg.content,rating,office:msg.office})}).catch(()=>{});
+    await fetch(`${API}/feedback`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({student_email:user.email,question:msg.question||"",answer:msg.content,rating,office:msg.office})}).catch(()=>{});
   },[user.email]);
 
   const sendMessage = async (text=input) => {
@@ -557,7 +557,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
     const newIdx = messages.length+1;
     const history = messages.slice(-10).map(m=>({role:m.role,content:m.content}));
     try {
-      const res = await fetch(`${API}/chat`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:q,student_name:user.full_name,student_year:user.year_of_study||"Year 1",student_major:user.major||"General",student_nationality:user.nationality||"Hungarian",office,history,session_id:sessionId,reply_lang:chatLang})});
+      const res = await fetch(`${API}/chat`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({message:q,student_name:user.full_name,student_year:user.year_of_study||"Year 1",student_major:user.major||"General",student_nationality:user.nationality||"Hungarian",office,history,session_id:sessionId,reply_lang:chatLang})});
       const data = await res.json();
       const answer = data.answer||"Sorry, I could not get a response.";
       const aiMsg = {role:"assistant",content:answer,office:data.office,office_name:data.office_name,office_emoji:data.office_emoji,question:q};
@@ -746,10 +746,10 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
       </div>
 
       {showOnboarding && <OnboardingModal C={C} uiLang={uiLang} onDone={handleOnboardingDone} />}
-      {showProgress   && <ProgressPanel  C={C} user={user} uiLang={uiLang} onClose={()=>setShowProgress(false)} />}
+      {showProgress   && <ProgressPanel  C={C} user={user} token={token} uiLang={uiLang} onClose={()=>setShowProgress(false)} />}
       {showEvents     && <EventsPanel    C={C} uiLang={uiLang} onClose={()=>setShowEvents(false)} />}
       {showMap        && <CampusMapPanel C={C} uiLang={uiLang} onClose={()=>setShowMap(false)} />}
-      {showReplies    && <RepliesPanel   C={C} user={user} uiLang={uiLang} onClose={()=>setShowReplies(false)} />}
+      {showReplies    && <RepliesPanel   C={C} user={user} token={token} uiLang={uiLang} onClose={()=>setShowReplies(false)} />}
       {showSurvey     && (
         <div style={{ position:"fixed",inset:0,zIndex:2000 }}>
           <PublicSurvey onClose={()=>setShowSurvey(false)} />
