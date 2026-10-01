@@ -403,16 +403,9 @@ function LoginScreen({ onLogin, onBack }) {
   const [uiLang,setUiLang]     = useState("en");
   const t = T[uiLang];
 
-  const DEMO = {
-    student:["student@uniduna.hu","password123"],
-    staff:  ["staff@uniduna.hu","password123"],
-    admin:  ["admin@uniduna.hu","password123"],
-  };
-
   const selectRole = (r) => {
     setRole(r); setError("");
-    const [e,p] = DEMO[r];
-    setEmail(e); setPassword(p);
+    setEmail(""); setPassword("");
   };
 
   const handleLogin = async () => {
@@ -476,9 +469,7 @@ function LoginScreen({ onLogin, onBack }) {
             <div style={{ fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4 }}>
               {t.loginRoles.find(r=>r.id===role)?.icon} {uiLang==="hu"?"Bejelentkezés mint":"Sign in as"} {t.loginRoles.find(r=>r.id===role)?.label}
             </div>
-            <div style={{ fontSize:11,color:"#475569",marginBottom:20,background:"rgba(255,255,255,0.05)",padding:"6px 10px",borderRadius:8 }}>
-              Demo: {DEMO[role][0]} / {DEMO[role][1]}
-            </div>
+            <div style={{ marginBottom:20 }} />
             {[["Email","email","email",email,setEmail],[uiLang==="hu"?"Jelszó":"Password","password","password",password,setPassword]].map(([label,type,ph,val,setter])=>(
               <div key={label} style={{ marginBottom:14 }}>
                 <div style={{ fontSize:11,color:"#94A3B8",fontWeight:600,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.5px" }}>{label}</div>
