@@ -194,8 +194,9 @@ export default function AdminPortal({ user, token, onLogout }) {
     setUploading(true); setUploadMsg("");
     const form = new FormData(); form.append("file", file);
     try {
-      const res = await fetch(`${API}/upload-noauth`, {
+      const res = await fetch(`${API}/upload`, {
         method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
         body: form
       });
       const data = await res.json();

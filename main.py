@@ -151,6 +151,11 @@ def get_current_user(authorization: str = Header(None)):
 
     raise HTTPException(status_code=401, detail="Session expired — please log in again")
 
+def require_admin(session = Depends(get_current_user)):
+    if session.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return session
+
 
 # ═══════════════════════════════════════════════════════════════
 # AUDIT LOG HELPER
@@ -480,27 +485,6 @@ async def upload_document(file: UploadFile = File(...), office: str = "general",
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/upload-noauth")
-async def upload_document_noauth(file: UploadFile = File(...), office: str = "general"):
-    """Upload endpoint without auth check — frontend already restricts to admin role."""
-    if not file.filename.endswith((".pdf", ".txt", ".docx")):
-        raise HTTPException(status_code=400, detail="Only PDF, TXT, DOCX supported.")
-    try:
-        contents = await file.read()
-        text = _extract_text(contents, file.filename)
-        add_document(text, source=file.filename, office=office)
-        save_docs_to_disk()
-        chunks = doc_count()
-        doc_registry[file.filename] = {
-            "uploaded_at": datetime.now().isoformat(),
-            "size_kb":     round(len(contents) / 1024, 1),
-            "chunks":      chunks,
-            "office":      office,
-        }
-        return {"message": f"'{file.filename}' ingested.", "chunks": chunks}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.get("/documents")
 def documents():
     enriched = []
@@ -648,7 +632,7 @@ def get_feedback():
             "score": round((ups/total*100) if total > 0 else 0, 1), "recent": feedback_log[-5:]}
 
 @app.get("/debug/indexed-documents")
-def debug_indexed_documents():
+def debug_indexed_documents(session = Depends(require_admin)):
     """Show what documents are currently indexed in memory (for debugging)."""
     from rag import _doc_chunks, _doc_lock, OFFICES
     with _doc_lock:
@@ -671,7 +655,7 @@ def debug_indexed_documents():
     }
 
 @app.get("/debug/search")
-def debug_search(q: str, office: str = "auto"):
+def debug_search(q: str, office: str = "auto", session = Depends(require_admin)):
     """Test BM25 search directly (for debugging)."""
     from rag import _bm25_search, detect_office
     
