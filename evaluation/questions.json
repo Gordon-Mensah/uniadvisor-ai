@@ -20,6 +20,7 @@
     "category": "fees",
     "answerable": true,
     "question": "Mennyi a jelentkezési díj, amit a jelentkezéskor fizetni kell?",
+    "question_en": "How much is the application fee that has to be paid when applying?",
     "expected_answer": "A jelentkezési (regisztrációs) díj 200 EUR.",
     "key_facts": [
       [
@@ -143,6 +144,7 @@
     "category": "deadlines",
     "answerable": true,
     "question": "Mikor kezdődik és mikor ér véget a jelentkezési időszak?",
+    "question_en": "When does the application period start and when does it end?",
     "expected_answer": "Minden évben február 11-től május 31-ig.",
     "key_facts": [
       [
@@ -192,6 +194,7 @@
     "category": "admission",
     "answerable": true,
     "question": "Milyen IELTS pontszám kell a mesterképzésre való jelentkezéshez?",
+    "question_en": "What IELTS score is required to apply for a master's program?",
     "expected_answer": "Legalább 6.5-ös IELTS pontszám (vagy ezzel egyenértékű nyelvvizsga).",
     "key_facts": [
       [
@@ -274,6 +277,7 @@
     "category": "visa",
     "answerable": true,
     "question": "Megérkeztem D típusú vízummal. Hány napon belül kell beadnom a tartózkodási engedély iránti kérelmet?",
+    "question_en": "I arrived with a type D visa. Within how many days do I have to submit the application for a residence permit?",
     "expected_answer": "30 napon belül, elektronikusan.",
     "key_facts": [
       [
@@ -322,6 +326,7 @@
     "category": "visa",
     "answerable": true,
     "question": "Mennyibe kerül a tartózkodási engedély meghosszabbítása?",
+    "question_en": "How much does it cost to extend the residence permit?",
     "expected_answer": "35.000 Ft; ösztöndíjasoknak ingyenes.",
     "key_facts": [
       [
@@ -375,6 +380,7 @@
     "category": "visa",
     "answerable": true,
     "question": "Elköltözöm egy új albérletbe. Kötelező bejelentenem az idegenrendészetnek?",
+    "question_en": "I am moving to a new rented flat. Is it mandatory to report it to the immigration authority?",
     "expected_answer": "Igen, a lakcímváltozást kötelező bejelenteni az OIF-nek, elektronikusan (Enter Hungary).",
     "key_facts": [
       [
@@ -413,6 +419,7 @@
     "category": "neptun",
     "answerable": true,
     "question": "Mi az alapértelmezett Neptun jelszó az első bejelentkezéskor?",
+    "question_en": "What is the default Neptun password at the first login?",
     "expected_answer": "\"Ne\" + a születési dátum NeÉÉÉÉHHNN formában; azonnal meg kell változtatni.",
     "key_facts": [
       [
@@ -484,6 +491,7 @@
     "category": "moodle",
     "answerable": true,
     "question": "Milyen adatokkal tudok belépni a Moodle-be?",
+    "question_en": "What details can I use to log in to Moodle?",
     "expected_answer": "Ugyanazokkal, mint a Neptunba: a felhasználónév a Neptun-kód, a jelszó a (megváltoztatott) Neptun jelszó.",
     "key_facts": [
       [
@@ -514,6 +522,7 @@
     "category": "housing",
     "answerable": true,
     "question": "Mennyibe kerül a kollégium havonta?",
+    "question_en": "How much does the dormitory cost per month?",
     "expected_answer": "Havi 125 €.",
     "key_facts": [
       [
@@ -563,6 +572,7 @@
     "category": "fees",
     "answerable": true,
     "question": "Mennyi pénzre van szükségem havonta a megélhetéshez Dunaújvárosban?",
+    "question_en": "How much money do I need per month for living costs in Dunaújváros?",
     "expected_answer": "Legalább havi 150.000 Ft (kb. 400 EUR).",
     "key_facts": [
       [
@@ -612,6 +622,7 @@
     "category": "health",
     "answerable": true,
     "question": "Mennyibe kerül a Generali hallgatói egészségbiztosítás egy évre?",
+    "question_en": "How much does the Generali student health insurance cost for one year?",
     "expected_answer": "Évi 105.000 Ft (2024-es adat).",
     "key_facts": [
       [
@@ -666,6 +677,7 @@
     "category": "health",
     "answerable": true,
     "question": "Mi az általános segélyhívó szám Magyarországon?",
+    "question_en": "What is the general emergency number in Hungary?",
     "expected_answer": "112.",
     "key_facts": [
       [
@@ -752,6 +764,7 @@
     "category": "campus",
     "answerable": true,
     "question": "Hány könyvet kölcsönözhetek a könyvtárból, és mennyi időre?",
+    "question_en": "How many books can I borrow from the library, and for how long?",
     "expected_answer": "Legfeljebb 6 könyvet, 4 hétre.",
     "key_facts": [
       [
@@ -789,6 +802,7 @@
     "category": "offices",
     "answerable": true,
     "question": "Hol található a Tanulmányi Osztály személyes ügyfélszolgálata?",
+    "question_en": "Where is the personal customer service of the Study Office located?",
     "expected_answer": "Az \"F\" épület földszintjén, a 13/b teremben.",
     "key_facts": [
       [
@@ -926,6 +940,7 @@
     "category": "campus",
     "answerable": false,
     "question": "Mennyibe kerül a parkolás az egyetem területén?",
+    "question_en": "How much does parking cost on the university grounds?",
     "expected_answer": null,
     "key_facts": [],
     "source_url": null,
@@ -937,6 +952,7 @@
     "category": "housing",
     "answerable": false,
     "question": "Tarthatok kutyát a kollégiumi szobámban?",
+    "question_en": "Can I keep a dog in my dormitory room?",
     "expected_answer": null,
     "key_facts": [],
     "source_url": null,
@@ -948,6 +964,7 @@
     "category": "fees",
     "answerable": false,
     "question": "Mennyi az Orvostudományi (általános orvos) képzés tandíja?",
+    "question_en": "What is the tuition fee for the Medicine (general medicine) program?",
     "expected_answer": null,
     "key_facts": [],
     "source_url": null,
@@ -959,6 +976,7 @@
     "category": "campus",
     "answerable": false,
     "question": "Mi a heti menü a menzán?",
+    "question_en": "What is the weekly menu in the canteen?",
     "expected_answer": null,
     "key_facts": [],
     "source_url": null,
