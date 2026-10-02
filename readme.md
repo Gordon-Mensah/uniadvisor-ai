@@ -22,6 +22,7 @@
 - [📈 Performance Optimization](#-performance-optimization)
 - [🔮 Future Enhancements](#-future-enhancements)
 - [📚 Research & Methodology](#-research--methodology)
+- [🕷️ Data Collection Ethics](#️-data-collection-ethics)
 - [🙏 Acknowledgments](#-acknowledgments)
 
 ---
@@ -807,6 +808,44 @@ Create campus events
 - **Context Assembly**: Intelligent context selection and ranking
 - **Prompt Engineering**: University-specific system prompts
 - **Response Validation**: Source attribution and accuracy verification
+
+---
+
+## 🕷️ Data Collection Ethics
+
+**What was crawled.** The knowledge base (`university_knowledge.txt`) was collected by
+`crawler.py` from the University of Dunaújváros's public English website, starting at
+`https://www.uniduna.hu/en/` and following only links whose path starts with `/en`.
+The result contains 195 HTML pages (200 visited, the crawler's `MAX_PAGES` limit, of which
+5 failed) and the text of 60 linked PDF documents; 145 images were also downloaded to
+`scraped_images/`. Only publicly accessible pages were fetched — no login, forms or
+personal-data pages. `scraper.py` is an earlier version that fetches a fixed list of
+about 60 `/en/` URLs with the same delays.
+
+**When.** 4 March 2026, starting 02:16 (local time), i.e. outside office hours, as recorded
+in the header of `university_knowledge.txt`.
+
+**Request rate.** One request at a time, with a pause after each request: 0.8 s after
+each page, 0.5 s after each PDF, 0.3 s after each image — roughly 405 requests in total,
+at most about 1.25 requests per second for pages. Every request had a timeout (10–20 s).
+
+**robots.txt.** The crawler did not read `https://www.uniduna.hu/robots.txt` before
+crawling, and robots.txt could not be retrieved retrospectively from the development
+environment used for this write-up. Check it with:
+
+```bash
+curl -s https://www.uniduna.hu/robots.txt
+```
+
+and record which `Disallow` rules apply to `User-agent: *` and whether a `Crawl-delay`
+is set. If `/en/` (or a prefix of it) is disallowed, or a `Crawl-delay` above 0.8 s is set,
+the crawl did not follow the site's stated policy and should be disclosed as such.
+
+**Limitations.** The crawler sent a desktop-browser `User-Agent` string instead of
+identifying itself as a research crawler with contact details, and it had no
+robots.txt check or automatic back-off on errors. A future re-crawl should add
+`urllib.robotparser`, an honest User-Agent (e.g. `UniAdvisorResearchBot/1.0 (+contact email)`),
+at least a 1 s delay (or the site's `Crawl-delay`), and back-off on HTTP 429/5xx responses.
 
 ---
 

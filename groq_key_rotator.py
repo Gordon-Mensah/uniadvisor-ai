@@ -20,6 +20,22 @@ def is_reasoning_model(model: str) -> bool:
     return model.startswith("openai/gpt-oss")
 
 
+def reasoning_params(model: str, reasoning_effort: str = "low") -> dict:
+    """Extra request parameters so reasoning models return only their final answer.
+
+    gpt-oss: reasoning_effort low/medium/high; include_reasoning=False drops the
+             reasoning from the response.
+    qwen3:   does not accept reasoning_effort="low"; reasoning_format="hidden"
+             returns only the final answer.
+    Other models get no extra parameters (Groq rejects them for non-reasoning models).
+    """
+    if is_reasoning_model(model):
+        return {"reasoning_effort": reasoning_effort, "include_reasoning": False}
+    if model.startswith("qwen/qwen3"):
+        return {"reasoning_format": "hidden"}
+    return {}
+
+
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 
@@ -92,11 +108,9 @@ class GroqKeyRotator:
 
             for m in models_to_try:
                 try:
-                    extra = {}
-                    if is_reasoning_model(m):
-                        # Reasoning tokens count toward max_tokens; keep reasoning short
-                        # and don't send it back (we only use the final answer).
-                        extra = {"reasoning_effort": reasoning_effort, "include_reasoning": False}
+                    # Reasoning tokens count toward max_tokens; keep reasoning short
+                    # and don't send it back (we only use the final answer).
+                    extra = reasoning_params(m, reasoning_effort)
                     response = client.chat.completions.create(
                         model=m,
                         max_completion_tokens=max_tokens,  # includes reasoning tokens
