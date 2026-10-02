@@ -14,7 +14,7 @@ from collections import defaultdict
 from dotenv import load_dotenv
 
 load_dotenv()
-from groq_key_rotator import get_groq_rotator
+from groq_key_rotator import get_groq_rotator, final_text
 
 DOCS_DIR  = os.getenv("DOCS_DIR", "./uploaded_docs")
 CACHE_MAX = 200
@@ -59,6 +59,70 @@ OFFICES = {
 
 def _tokenize(text):
     return re.findall(r"[a-záéíóöőüűA-ZÁÉÍÓÖŐÜŰ0-9]+", text.lower())
+
+
+# ── Retrieval modes (thesis experiments) ──────────────────
+# RETRIEVAL_MODE env var, read on every call:
+#   baseline  — BM25 on all tokens (production behaviour, default)
+#   stopwords — V1: BM25 with English + Hungarian stopwords removed from chunks and query
+#   translate — V2: stopwords, plus Hungarian questions are translated to English
+#               by the LLM before searching (the answer stays in the chosen language)
+# BM25 parameters (k1=1.5, b=0.75, top-3) are identical in every mode.
+RETRIEVAL_MODES = ("baseline", "stopwords", "translate")
+
+from rag_stopwords import ENGLISH as _EN_STOPWORDS, HUNGARIAN as _HU_STOPWORDS
+_EN_STOP = {t for w in _EN_STOPWORDS for t in _tokenize(w)}
+_HU_STOP = {t for w in _HU_STOPWORDS for t in _tokenize(w)}
+STOPWORDS = _EN_STOP | _HU_STOP
+# Words in only one list are the language signal ("a", "is", "be"... appear in both)
+_EN_ONLY, _HU_ONLY = _EN_STOP - _HU_STOP, _HU_STOP - _EN_STOP
+
+
+def retrieval_mode():
+    mode = os.getenv("RETRIEVAL_MODE", "baseline").strip().lower() or "baseline"
+    if mode not in RETRIEVAL_MODES:
+        raise ValueError(f"RETRIEVAL_MODE must be one of {RETRIEVAL_MODES}, got {mode!r}")
+    return mode
+
+
+def is_hungarian(text):
+    """Heuristic language check: more Hungarian-only than English-only stopwords.
+
+    Accented letters only break ties: English questions contain Hungarian
+    place names (Dunaújváros, Székesfehérvár) but also English stopwords.
+    """
+    toks = _tokenize(text)
+    hu, en = sum(t in _HU_ONLY for t in toks), sum(t in _EN_ONLY for t in toks)
+    if hu != en:
+        return hu > en
+    return bool(re.search(r"[áéíóöőúüű]", text.lower()))
+
+
+def _content_tokens(doc):
+    """Chunk tokens without stopwords (computed once per chunk, then cached)."""
+    toks = doc.get("tokens_nostop")
+    if toks is None:
+        toks = doc["tokens_nostop"] = [t for t in doc["tokens"] if t not in STOPWORDS]
+    return toks
+
+
+_translation_cache = {}
+
+def _translate_query(question):
+    """Translate a Hungarian question to English for retrieval (V2)."""
+    if question in _translation_cache:
+        return _translation_cache[question]
+    r = get_groq_rotator().chat(
+        messages=[
+            {"role": "system", "content": "Translate the user's Hungarian question into English. "
+                                          "Output only the English translation, nothing else."},
+            {"role": "user", "content": question},
+        ],
+        max_tokens=512, temperature=0.0,
+    )
+    english = final_text(r)
+    _translation_cache[question] = english
+    return english
 
 def _chunk_text(text, chunk_size=400, overlap=80):
     words = text.split()
@@ -152,28 +216,34 @@ def load_docs_from_disk():
 
 # ── BM25 search ───────────────────────────────────────────
 
-def _bm25_search(query, office=None, k=3):
+def _bm25_search(query, office=None, k=3, mode=None):
+    mode = mode or retrieval_mode()
+    if mode == "baseline":
+        doc_tokens = lambda d: d["tokens"]
+        qtoks = _tokenize(query)
+    else:
+        doc_tokens = _content_tokens
+        qtoks = [t for t in _tokenize(query) if t not in STOPWORDS]
     with _doc_lock:
         pool = [d for d in _doc_chunks if office is None or d["office"]==office or office=="general"]
         if not pool:
             pool = list(_doc_chunks)
     if not pool:
         return []
-    qtoks = _tokenize(query)
     if not qtoks:
         return pool[:k]
     k1, b = 1.5, 0.75
     N = len(pool)
-    avgdl = sum(len(d["tokens"]) for d in pool) / N
+    avgdl = sum(len(doc_tokens(d)) for d in pool) / N
     idf = {}
     for t in set(qtoks):
-        df = sum(1 for d in pool if t in d["tokens"])
+        df = sum(1 for d in pool if t in doc_tokens(d))
         idf[t] = math.log((N-df+0.5)/(df+0.5)+1)
     scores = []
     for i, doc in enumerate(pool):
-        dl = len(doc["tokens"])
+        dl = len(doc_tokens(doc))
         tf_map = defaultdict(int)
-        for t in doc["tokens"]: tf_map[t] += 1
+        for t in doc_tokens(doc): tf_map[t] += 1
         score = sum(idf.get(t,0)*tf_map[t]*(k1+1)/(tf_map[t]+k1*(1-b+b*dl/avgdl)) for t in qtoks if tf_map[t]>0)
         if score > 0:
             scores.append((score, i))
@@ -190,8 +260,8 @@ def detect_office(question):
     scores = {k:v for k,v in scores.items() if v>0}
     return max(scores, key=scores.get) if scores else "general"
 
-def _cache_key(question, major, year, office, nationality, lang):
-    return hashlib.md5(f"{question.lower().strip()}|{major}|{year}|{office}|{nationality}|{lang}".encode()).hexdigest()
+def _cache_key(question, major, year, office, nationality, lang, mode="baseline"):
+    return hashlib.md5(f"{question.lower().strip()}|{major}|{year}|{office}|{nationality}|{lang}|{mode}".encode()).hexdigest()
 
 
 # ── Main answer function ──────────────────────────────────
@@ -201,7 +271,7 @@ def get_answer(question, student_name="Student", student_year="Year 1",
                office="auto", history=None, reply_lang=None):
     if history is None:
         history = []
-    rotator = get_groq_rotator()
+    mode = retrieval_mode()
     all_questions.append(question)
 
     # ── Office detection ──────────────────────────────────
@@ -222,7 +292,7 @@ def get_answer(question, student_name="Student", student_year="Year 1",
         lang = "English"
 
     # Cache (now includes lang so EN/HU get separate cached answers)
-    ck = _cache_key(question, student_major, student_year, office, student_nationality, lang)
+    ck = _cache_key(question, student_major, student_year, office, student_nationality, lang, mode)
     if ck in _answer_cache and not history:
         c = _answer_cache[ck]
         return c["answer"], c["sources"], c["office"]
@@ -231,18 +301,31 @@ def get_answer(question, student_name="Student", student_year="Year 1",
     is_intl      = student_nationality.lower() not in ("hungarian","magyar")
     nat_note     = f"Student is international ({student_nationality}): mention visa/Erasmus info if relevant. " if is_intl else ""
 
-    # No docs fallback
+    # Empty knowledge base: say so instead of letting the LLM answer from
+    # general knowledge (it would invent university-specific facts).
     if doc_count() == 0:
-        r = rotator.chat(
-            messages=[{"role":"user","content":f"UniAdvisor AI, Dunaujvaros Egyetem. {nat_note}You MUST reply in {lang} only. No docs yet — use general knowledge.\nQ: {question}\nA:"}],
-            max_tokens=320, temperature=0.3, model="llama-3.1-8b-instant",
-        )
-        return r.choices[0].message.content, [], office
+        if lang == "Hungarian":
+            msg = ("A tudásbázis jelenleg üres, ezért nem tudok megbízható választ adni. "
+                   f"Kérlek, fordulj közvetlenül ide: {office_info['name']}.")
+        else:
+            msg = ("The knowledge base is currently empty, so I can't give a reliable answer. "
+                   f"Please contact the {office_info['name']} directly.")
+        return msg, [], office
+
+    rotator = get_groq_rotator()
+
+    # V2: search with an English translation of Hungarian questions
+    search_query = question
+    if mode == "translate" and is_hungarian(question):
+        try:
+            search_query = _translate_query(question)
+        except Exception as e:
+            print(f"[UniAdvisor] Query translation failed, searching with the original: {e}")
 
     # BM25 search
-    docs = _bm25_search(question, office=office, k=3)
+    docs = _bm25_search(search_query, office=office, k=3, mode=mode)
     if not docs and office != "general":
-        docs = _bm25_search(question, office=None, k=3)
+        docs = _bm25_search(search_query, office=None, k=3, mode=mode)
 
     context = "\n\n".join(d["text"] for d in docs)
     
@@ -286,8 +369,8 @@ def get_answer(question, student_name="Student", student_year="Year 1",
         msgs.append({"role":role,"content":m.get("content","")})
     msgs.append({"role":"user","content":question})
 
-    r = rotator.chat(messages=msgs, max_tokens=320, temperature=0.1, model="llama-3.1-8b-instant")
-    answer = r.choices[0].message.content
+    r = rotator.chat(messages=msgs, max_tokens=1024, temperature=0.1)
+    answer = final_text(r)
 
     # Cache
     if len(_answer_cache) >= CACHE_MAX:

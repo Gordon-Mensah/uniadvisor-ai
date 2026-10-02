@@ -2,18 +2,65 @@
 groq_key_rotator.py  —  Multi-key Groq API rotation for UniAdvisor AI
 """
 import os
+import re
 import logging
 from groq import Groq
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_MODEL = "openai/gpt-oss-20b"
+
+
+def current_model() -> str:
+    """Model from the GROQ_MODEL env var (read on every call, so it can be changed at runtime)."""
+    return os.getenv("GROQ_MODEL", "").strip() or DEFAULT_MODEL
+
+
+def is_reasoning_model(model: str) -> bool:
+    return model.startswith("openai/gpt-oss")
+
+
+def reasoning_params(model: str, reasoning_effort: str = "low") -> dict:
+    """Extra request parameters so reasoning models return only their final answer.
+
+    gpt-oss: reasoning_effort low/medium/high; include_reasoning=False drops the
+             reasoning from the response.
+    qwen3:   does not accept reasoning_effort="low"; reasoning_format="hidden"
+             returns only the final answer.
+    Other models get no extra parameters (Groq rejects them for non-reasoning models).
+    """
+    if is_reasoning_model(model):
+        return {"reasoning_effort": reasoning_effort, "include_reasoning": False}
+    if model.startswith("qwen/qwen3"):
+        return {"reasoning_format": "hidden"}
+    return {}
+
+
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def final_text(response) -> str:
+    """Return only the model's final answer, never its reasoning.
+
+    gpt-oss puts reasoning in message.reasoning (and we ask Groq not to send it
+    at all); other reasoning models can inline it as <think>...</think>, which
+    is stripped here as a safeguard.
+    """
+    choice = response.choices[0]
+    content = _THINK_RE.sub("", choice.message.content or "").strip()
+    if not content:
+        raise RuntimeError(
+            f"Model returned no final answer (finish_reason={choice.finish_reason}). "
+            "If finish_reason is 'length', the reasoning used up max_tokens; raise max_tokens."
+        )
+    return content
+
 
 class GroqKeyRotator:
-    FALLBACK_MODELS = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
-        "gemma2-9b-it",
-    ]
+    # Optional extra models to try when a key is rate-limited on the main one,
+    # e.g. GROQ_FALLBACK_MODELS="openai/gpt-oss-120b". Empty by default so every
+    # answer comes from the configured model (important for evaluation runs).
+    FALLBACK_MODELS = [m.strip() for m in os.getenv("GROQ_FALLBACK_MODELS", "").split(",") if m.strip()]
 
     def __init__(self, keys: list = None):
         if keys:
@@ -48,8 +95,9 @@ class GroqKeyRotator:
     def _next_key(self):
         self.current_key_index = (self.current_key_index + 1) % len(self.keys)
 
-    def chat(self, messages: list, max_tokens: int = 1000,
-             temperature: float = 0.2, model: str = "llama-3.3-70b-versatile"):
+    def chat(self, messages: list, max_tokens: int = 1024,
+             temperature: float = 0.2, model: str = None, reasoning_effort: str = "low"):
+        model = model or current_model()
         models_to_try = [model] + [m for m in self.FALLBACK_MODELS if m != model]
         keys_tried = 0
         last_error = None
@@ -60,11 +108,15 @@ class GroqKeyRotator:
 
             for m in models_to_try:
                 try:
+                    # Reasoning tokens count toward max_tokens; keep reasoning short
+                    # and don't send it back (we only use the final answer).
+                    extra = reasoning_params(m, reasoning_effort)
                     response = client.chat.completions.create(
                         model=m,
-                        max_tokens=max_tokens,
+                        max_completion_tokens=max_tokens,  # includes reasoning tokens
                         temperature=temperature,
                         messages=messages,
+                        **extra,
                     )
                     return response
                 except Exception as e:
