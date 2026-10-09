@@ -67,6 +67,7 @@ except Exception:
     sb = None
     SUPABASE_AVAILABLE = False
 
+from supabase_paging import fetch_all
 from rag import get_answer, get_stats, add_document, load_docs_from_disk, save_docs_to_disk, doc_count, clear_documents, OFFICES, detect_office
 # ingest now handled directly in rag.py via add_document
 
@@ -632,7 +633,9 @@ def announcement_receipts(session = Depends(require_staff)):
     if not SUPABASE_AVAILABLE:
         return {"receipts": {}}
     try:
-        rows = sb.table("announcement_reads").select("announcement_id, action").execute().data or []
+        rows = fetch_all(lambda: sb.table("announcement_reads").select("announcement_id, action, student_email"),
+                         order=[("announcement_id", False), ("student_email", False)], tiebreak=None,
+                         label="announcement_reads")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     counts = {}
@@ -663,9 +666,10 @@ def staff_students(session = Depends(require_staff)):
     if not SUPABASE_AVAILABLE:
         return {"students": []}
     try:
-        result = sb.table("users").select("full_name, email, major, year_of_study, student_id, active") \
-                   .eq("role", "student").order("full_name").execute()
-        return {"students": result.data or []}
+        rows = fetch_all(lambda: sb.table("users").select("full_name, email, major, year_of_study, student_id, active")
+                                   .eq("role", "student"),
+                         order=[("full_name", False)], tiebreak="email", label="users (students)")
+        return {"students": rows}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -725,8 +729,9 @@ def survey_responses(session = Depends(require_admin)):
     if not SUPABASE_AVAILABLE:
         return {"responses": []}
     try:
-        result = sb.table("survey_responses").select("*").order("submitted_at", desc=True).execute()
-        return {"responses": result.data or []}
+        rows = fetch_all(lambda: sb.table("survey_responses").select("*"),
+                         order=[("submitted_at", True)], label="survey_responses")
+        return {"responses": rows}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -851,8 +856,9 @@ def office_analytics():
     if not SUPABASE_AVAILABLE:
         return {"offices": [], "message": "Supabase not connected"}
     try:
-        result = sb.table("office_analytics").select("office_id, office_name, rating, asked_at").execute()
-        data   = result.data or []
+        # One row per routed question, so this table outgrows Supabase's row cap first
+        data = fetch_all(lambda: sb.table("office_analytics").select("office_id, office_name, rating, asked_at"),
+                         order=[("asked_at", False)], label="office_analytics")
         from collections import defaultdict
         offices = defaultdict(lambda: {"total": 0, "up": 0, "down": 0, "unrated": 0, "daily": defaultdict(int)})
         for row in data:
@@ -894,13 +900,15 @@ def _list_escalations(status: Optional[str], office: Optional[str]):
     if not SUPABASE_AVAILABLE:
         return {"escalations": []}
     try:
-        q = sb.table("escalations").select("*").order("created_at", desc=True)
-        if status:
-            q = q.eq("status", status)
-        if office:
-            q = q.eq("office", office)
-        result = q.execute()
-        return {"escalations": result.data or []}
+        def query():
+            q = sb.table("escalations").select("*")
+            if status:
+                q = q.eq("status", status)
+            if office:
+                q = q.eq("office", office)
+            return q
+        rows = fetch_all(query, order=[("created_at", True)], label="escalations")
+        return {"escalations": rows}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1110,6 +1118,7 @@ def delete_event(event_id: int, session = Depends(require_admin)):
 
 @app.get("/audit-log")
 def get_audit_log(limit: int = 50, session = Depends(require_admin)):
+    limit = max(1, min(limit, 1000))  # Supabase returns at most 1000 rows per request anyway
     if SUPABASE_AVAILABLE:
         try:
             result = sb.table("audit_log").select("*").order("created_at", desc=True).limit(limit).execute()
