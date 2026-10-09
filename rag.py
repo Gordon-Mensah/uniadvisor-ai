@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 from groq_key_rotator import get_groq_rotator, final_text
+from supabase_paging import fetch_all
 
 DOCS_DIR  = os.getenv("DOCS_DIR", "./uploaded_docs")
 CACHE_MAX = 200
@@ -207,11 +208,12 @@ def load_docs_from_disk():
     # Try Supabase first (persistent across restarts)
     if SUPABASE_AVAILABLE:
         try:
-            result = sb.table("document_chunks").select("*").execute()
-            if result.data:
+            # Paged: a plain select() stops at Supabase's row cap (1000 by default)
+            rows = fetch_all(lambda: sb.table("document_chunks").select("*"), label="document_chunks")
+            if rows:
                 with _doc_lock:
-                    _doc_chunks = [{"text":d["text"],"source":d["source"],"office":d.get("office","general"),"page":d.get("page"),"tokens":_tokenize(d["text"])} for d in result.data]
-                print(f"[UniAdvisor] Loaded {len(_doc_chunks)} chunks from Supabase")
+                    _doc_chunks = [{"text":d["text"],"source":d["source"],"office":d.get("office","general"),"page":d.get("page"),"tokens":_tokenize(d["text"])} for d in rows]
+                print(f"[UniAdvisor] Loaded {len(_doc_chunks)} chunks from Supabase ({len({d['source'] for d in rows})} documents)")
                 return
         except Exception as e:
             print(f"[UniAdvisor] Supabase load failed: {e}")
