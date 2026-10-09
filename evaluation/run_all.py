@@ -15,6 +15,11 @@ Retrieval only (no API calls):
       in questions.json, i.e. a perfect translator)
     -> evaluation/results/comparison_retrieval-only.md
 
+Prompt experiment (needs Groq keys):
+    python evaluation/run_all.py --prompt-experiment
+      translate + openai/gpt-oss-20b with PROMPT_MODE=default, then =strict
+    -> evaluation/results/comparison_prompt.md
+
 Each configuration runs evaluate.py in its own process, so the BM25 index and
 caches start fresh every time. The "best" retrieval mode is the one with the
 highest overall answer accuracy on gpt-oss-20b (ties: Hit@3, then MRR).
@@ -34,11 +39,11 @@ MODES = ("baseline", "stopwords", "translate")
 GROUPS = ("Overall", "English", "Hungarian")
 
 
-def run_config(retrieval, model, args, index, total):
-    label = f"{retrieval} + {model or 'no LLM'}"
+def run_config(retrieval, model, args, index, total, prompt="default"):
+    label = f"{retrieval} + {model or 'no LLM'}" + (f" + prompt={prompt}" if prompt != "default" or args.prompt_experiment else "")
     print(f"\n{'═' * 70}\n[{index}/{total}] {label}\n{'═' * 70}", flush=True)
     metrics_path = os.path.join(args.out_dir, f".metrics_tmp_{index}.json")
-    cmd = [sys.executable, EVALUATE, "--retrieval", retrieval, "--out-dir", args.out_dir,
+    cmd = [sys.executable, EVALUATE, "--retrieval", retrieval, "--prompt", prompt, "--out-dir", args.out_dir,
            "--metrics-out", metrics_path, "--delay", str(args.delay)]
     if model:
         cmd += ["--model", model]
@@ -71,8 +76,8 @@ def _pct(v):
     return "–" if v is None else f"{v * 100:.1f}%"
 
 
-def write_comparison(results, path, retrieval_only, note):
-    cols = ["Run", "Retrieval", "Model", "Group", "N (ans/unans)", "Hit@3", "MRR", "Answer accuracy",
+def write_comparison(results, path, retrieval_only, note, title="retrieval and model comparison"):
+    cols = ["Run", "Retrieval", "Prompt", "Model", "Group", "N (ans/unans)", "Hit@3", "MRR", "Answer accuracy",
             "Key-fact coverage", "Abstention accuracy", "False abstention", "Median latency (s)"]
     lines = ["| " + " | ".join(cols) + " |", "|" + "|".join("---" for _ in cols) + "|"]
     for group in GROUPS:
@@ -80,7 +85,8 @@ def write_comparison(results, path, retrieval_only, note):
             g = r["groups"].get(group)
             if not g:
                 continue
-            row = [str(i), r["retrieval_desc"], "–" if r["retrieval_only"] else r["model"], group,
+            row = [str(i), r["retrieval_desc"], "–" if r["retrieval_only"] else r.get("prompt", "default"),
+                   "–" if r["retrieval_only"] else r["model"], group,
                    f"{g['n_answerable']}/{g['n_unanswerable']}", _pct(g["hit_at_3"]),
                    "–" if g["mrr"] is None else f"{g['mrr']:.3f}", _pct(g["answer_accuracy"]),
                    _pct(g["key_fact_coverage"]), _pct(g["abstention_accuracy"]), _pct(g["false_abstention"]),
@@ -95,7 +101,7 @@ def write_comparison(results, path, retrieval_only, note):
 
     markdown = "\n".join(lines)
     doc = [
-        "# UniAdvisor AI — retrieval and model comparison" + (" (retrieval only)" if retrieval_only else ""),
+        f"# UniAdvisor AI — {title}" + (" (retrieval only)" if retrieval_only else ""),
         "",
         f"Generated {datetime.now():%Y-%m-%d %H:%M}. BM25 parameters identical in every run "
         "(k1=1.5, b=0.75, top-3 chunks).",
@@ -131,6 +137,9 @@ def main():
     p = argparse.ArgumentParser(description="Run all evaluation configurations and compare them.")
     p.add_argument("--retrieval-only", action="store_true",
                    help="Compare the three retrieval modes without any API calls")
+    p.add_argument("--prompt-experiment", action="store_true",
+                   help="Run translate + --model with prompt=default and prompt=strict "
+                        "and write comparison_prompt.md (instead of the retrieval comparison)")
     p.add_argument("--model", default="openai/gpt-oss-20b", help="Model for the retrieval comparison")
     p.add_argument("--big-model", default="openai/gpt-oss-120b", help="Model for the best retrieval mode")
     p.add_argument("--delay", type=float, default=2.0, help="Seconds between questions (default 2)")
@@ -140,8 +149,26 @@ def main():
     p.add_argument("--out-dir", default=os.path.join(HERE, "results"))
     args = p.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
+    if args.retrieval_only and args.prompt_experiment:
+        p.error("--prompt-experiment needs the LLM; it cannot be combined with --retrieval-only")
     if args.retrieval_only:
         args.delay, args.pause = 0.0, 0.0
+
+    if args.prompt_experiment:
+        results = []
+        for i, prompt in enumerate(("default", "strict"), 1):
+            results.append(run_config("translate", args.model, args, i, 2, prompt=prompt))
+            if args.pause and i < 2:
+                print(f"\nWaiting {args.pause:.0f}s before the next configuration (rate limits)...", flush=True)
+                time.sleep(args.pause)
+        note = ("Prompt experiment: identical retrieval (translate) and model; only the answer prompt differs. "
+                "*default* is the production prompt; *strict* forbids answers not stated in the context and "
+                "prescribes an explicit \"I don't know\" + office referral. Retrieval metrics (Hit@3, MRR) "
+                "should be identical in both runs; any difference comes from the LLM translation step.")
+        path = os.path.join(args.out_dir, "comparison_prompt.md")
+        table = write_comparison(results, path, False, note, title="answer prompt comparison")
+        print(f"\n{table}\n\nComparison written to {path}")
+        return
 
     results, note = [], ""
     total = len(MODES) + (0 if args.retrieval_only else 1)

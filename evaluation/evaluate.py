@@ -20,8 +20,9 @@ Usage (from the repository root):
     python evaluation/evaluate.py --limit 5 --delay 2
     python evaluation/evaluate.py --model openai/gpt-oss-120b   # compare another Groq model
     python evaluation/evaluate.py --retrieval stopwords          # baseline | stopwords | translate
+    python evaluation/evaluate.py --retrieval translate --prompt strict   # default | strict
 
-Outputs (in evaluation/results/ by default), <run> = <retrieval>_<model>_<timestamp>:
+Outputs (in evaluation/results/ by default), <run> = <retrieval>_<prompt>_<model>_<timestamp>:
     results_<run>.csv   one row per question (manual_correct is left empty for hand-marking)
     summary_<run>.md    the summary tables printed at the end
     metrics_<run>.json  the same numbers, machine-readable (used by run_all.py)
@@ -346,6 +347,7 @@ def build_summary(rows, meta):
         f"- Mode: {meta['mode']}",
         f"- Model: {meta['model']}",
         f"- Retrieval: {meta['retrieval']} (BM25 k1=1.5, b=0.75, top-3)",
+        f"- Prompt: {meta['prompt']}",
         f"- Knowledge base: {meta['kb']}",
         f"- Questions: {len(rows)} ({errors} failed with errors)",
     ] + ([f"- **Run stopped early:** {meta['aborted']}"] if meta.get("aborted") else []) + [
@@ -388,6 +390,8 @@ def main():
     p.add_argument("--retrieval-only", action="store_true", help="Skip LLM calls; measure retrieval only")
     p.add_argument("--retrieval", choices=("baseline", "stopwords", "translate"), default="baseline",
                    help="Retrieval mode (sets RETRIEVAL_MODE for rag.py; default: baseline)")
+    p.add_argument("--prompt", choices=("default", "strict"), default="default",
+                   help="Answer prompt (sets PROMPT_MODE for rag.py; default: default)")
     p.add_argument("--metrics-out", default=None, help="Also write the metrics JSON to this path")
     p.add_argument("--model", default=None,
                    help="Groq model to evaluate (default: GROQ_MODEL env var, else openai/gpt-oss-20b), "
@@ -421,6 +425,7 @@ def main():
     if args.model:
         os.environ["GROQ_MODEL"] = args.model  # rag.py / groq_key_rotator read it on every call
     os.environ["RETRIEVAL_MODE"] = args.retrieval
+    os.environ["PROMPT_MODE"] = args.prompt
     import groq_key_rotator
     import rag
     model_name = groq_key_rotator.current_model()
@@ -489,7 +494,7 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     model_slug = "retrieval-only" if args.retrieval_only else re.sub(r"[^A-Za-z0-9._-]+", "-", model_name)
-    run_name = f"{args.retrieval}_{model_slug}_{stamp}"
+    run_name = f"{args.retrieval}_{args.prompt}_{model_slug}_{stamp}"
     csv_path = os.path.join(args.out_dir, f"results_{run_name}.csv")
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:  # utf-8-sig so Excel shows accents
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
@@ -497,6 +502,7 @@ def main():
         writer.writerows(rows)
 
     meta = {"timestamp": stamp, "kb": kb_desc, "retrieval": retrieval_desc, "aborted": aborted,
+            "prompt": "n/a (retrieval only)" if args.retrieval_only else args.prompt,
             "mode": "retrieval only (no LLM)" if args.retrieval_only else "full (retrieval + LLM)",
             "model": "n/a (retrieval only)" if args.retrieval_only else (
                 model_name + (f" (served by Groq as: {', '.join(sorted(served_models))})"
@@ -508,7 +514,7 @@ def main():
 
     langs = {"en": "English", "hu": "Hungarian"}
     metrics_doc = {
-        "run": run_name, "retrieval": args.retrieval, "retrieval_desc": retrieval_desc,
+        "run": run_name, "retrieval": args.retrieval, "retrieval_desc": retrieval_desc, "prompt": args.prompt,
         "model": meta["model"], "retrieval_only": args.retrieval_only, "aborted": aborted,
         "questions": len(rows), "errors": sum(1 for r in rows if r["error"]),
         "csv": csv_path, "summary": md_path,

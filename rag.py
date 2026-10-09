@@ -78,6 +78,20 @@ STOPWORDS = _EN_STOP | _HU_STOP
 _EN_ONLY, _HU_ONLY = _EN_STOP - _HU_STOP, _HU_STOP - _EN_STOP
 
 
+# PROMPT_MODE env var, read on every call:
+#   default — the original answer prompt (production behaviour)
+#   strict  — answer ONLY from the context; otherwise say clearly "I don't know"
+#             and name the office to contact (abstention experiment)
+PROMPT_MODES = ("default", "strict")
+
+
+def prompt_mode():
+    mode = os.getenv("PROMPT_MODE", "default").strip().lower() or "default"
+    if mode not in PROMPT_MODES:
+        raise ValueError(f"PROMPT_MODE must be one of {PROMPT_MODES}, got {mode!r}")
+    return mode
+
+
 def retrieval_mode():
     mode = os.getenv("RETRIEVAL_MODE", "baseline").strip().lower() or "baseline"
     if mode not in RETRIEVAL_MODES:
@@ -260,8 +274,8 @@ def detect_office(question):
     scores = {k:v for k,v in scores.items() if v>0}
     return max(scores, key=scores.get) if scores else "general"
 
-def _cache_key(question, major, year, office, nationality, lang, mode="baseline"):
-    return hashlib.md5(f"{question.lower().strip()}|{major}|{year}|{office}|{nationality}|{lang}|{mode}".encode()).hexdigest()
+def _cache_key(question, major, year, office, nationality, lang, mode="baseline", prompt="default"):
+    return hashlib.md5(f"{question.lower().strip()}|{major}|{year}|{office}|{nationality}|{lang}|{mode}|{prompt}".encode()).hexdigest()
 
 
 # ── Main answer function ──────────────────────────────────
@@ -272,6 +286,7 @@ def get_answer(question, student_name="Student", student_year="Year 1",
     if history is None:
         history = []
     mode = retrieval_mode()
+    pmode = prompt_mode()
     all_questions.append(question)
 
     # ── Office detection ──────────────────────────────────
@@ -292,7 +307,7 @@ def get_answer(question, student_name="Student", student_year="Year 1",
         lang = "English"
 
     # Cache (now includes lang so EN/HU get separate cached answers)
-    ck = _cache_key(question, student_major, student_year, office, student_nationality, lang, mode)
+    ck = _cache_key(question, student_major, student_year, office, student_nationality, lang, mode, pmode)
     if ck in _answer_cache and not history:
         c = _answer_cache[ck]
         return c["answer"], c["sources"], c["office"]
@@ -345,6 +360,31 @@ def get_answer(question, student_name="Student", student_year="Year 1",
                 entry["page"] = d["page"]+1
             sources.append(entry)
 
+    # ── Grounding instructions (PROMPT_MODE) ──────────────
+    if pmode == "strict":
+        if lang == "Hungarian":
+            dont_know = ("Erre nem találok információt a rendelkezésre álló egyetemi anyagokban, "
+                         f"ezért nem tudom megmondani. Kérlek, fordulj ide: {office_info['name']}.")
+        else:
+            dont_know = ("I don't know — the university information available to me does not cover this. "
+                         f"Please contact: {office_info['name']}.")
+        grounding = (
+            "STRICT GROUNDING RULES:\n"
+            "- Answer ONLY with facts that are stated in the context below. Do not use general knowledge, "
+            "assumptions or typical practices at other universities.\n"
+            "- If the context does not contain the answer, do not guess and do not give a partial or "
+            f"general answer. Reply exactly with: \"{dont_know}\"\n"
+            "- If the context answers only part of the question, answer that part and say clearly which "
+            f"part you don't know, and refer the student to: {office_info['name']}.\n"
+            "- Mention visa/Erasmus or other extra information only if it is in the context.\n"
+            "Be concise. Use bullet points for lists.\n"
+        )
+    else:
+        grounding = (
+            f"Answer from the context below only. If the answer is not in the context, say so politely and refer to {office_info['name']}.\n"
+            f"Be concise. Use bullet points for lists.\n"
+        )
+
     # ── System prompt — language lock is ABSOLUTE ─────────
     sys = (
         f"UniAdvisor AI — {office_info['emoji']} {office_info['name']}, Dunaujvaros Egyetem.\n"
@@ -357,8 +397,7 @@ def get_answer(question, student_name="Student", student_year="Year 1",
         f"Do NOT mix languages. Do NOT add translations.\n"
         f"Every single word of your response must be in {lang}.\n"
         f"\n"
-        f"Answer from the context below only. If the answer is not in the context, say so politely and refer to {office_info['name']}.\n"
-        f"Be concise. Use bullet points for lists.\n"
+        f"{grounding}"
         f"\nContext:\n{context}"
     )
 

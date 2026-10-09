@@ -20,6 +20,8 @@ services:
         sync: false
       - key: GROQ_MODEL
         sync: false
+      - key: RETRIEVAL_MODE
+        value: translate
       - key: GROQ_API_KEY_1
         sync: false
       - key: GROQ_API_KEY_2

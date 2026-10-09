@@ -288,6 +288,7 @@ class EscalationCreate(BaseModel):
     student_name:  str
     subject:       str
     message:       str
+    office:        str = "general"   # office id from rag.OFFICES (the answer's detected office)
 
 class EscalationReply(BaseModel):
     admin_reply: str
@@ -889,26 +890,63 @@ def office_analytics():
 # ESCALATIONS
 # ═══════════════════════════════════════════════════════════════
 
-@app.get("/escalations")
-def get_escalations(status: Optional[str] = None, session = Depends(require_admin)):
+def _list_escalations(status: Optional[str], office: Optional[str]):
     if not SUPABASE_AVAILABLE:
         return {"escalations": []}
     try:
         q = sb.table("escalations").select("*").order("created_at", desc=True)
         if status:
             q = q.eq("status", status)
+        if office:
+            q = q.eq("office", office)
         result = q.execute()
         return {"escalations": result.data or []}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/escalations")
+def get_escalations(status: Optional[str] = None, office: Optional[str] = None,
+                    session = Depends(require_admin)):
+    return _list_escalations(status, office)
+
+
+def staff_office(session: dict) -> str:
+    """Office id a staff member handles, from users.department (matched to an OFFICES id or name)."""
+    if not SUPABASE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Supabase not connected")
+    try:
+        found = sb.table("users").select("department").eq("email", session["email"]).execute().data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    department = ((found[0].get("department") if found else None) or "").strip().lower()
+    for oid, info in OFFICES.items():
+        if department in (oid.lower(), info["name"].lower()):
+            return oid
+    valid = ", ".join(f"'{info['name']}'" for info in OFFICES.values())
+    raise HTTPException(status_code=403, detail=(
+        f"Your account's department ({department or 'not set'}) does not match an office. "
+        f"An admin must set users.department to one of: {valid}"))
+
+@app.get("/staff/escalations")
+def staff_escalations(status: Optional[str] = None, office: Optional[str] = None,
+                      session = Depends(require_staff)):
+    """Staff: escalations for their own office only. Admins: all (optionally filtered by office)."""
+    if session.get("role") == "admin":
+        return {**_list_escalations(status, office), "office": office}
+    own = staff_office(session)
+    return {**_list_escalations(status, own), "office": own}
+
 @app.post("/escalations")
 def create_escalation(item: EscalationCreate, session = Depends(get_current_user)):
+    office = (item.office or "general").strip()
+    if office not in OFFICES:
+        raise HTTPException(status_code=400, detail=f"Unknown office '{office}'. Valid: {', '.join(OFFICES)}")
     entry = {
         "student_email": session["email"],
         "student_name":  item.student_name,
         "subject":       item.subject,
         "message":       item.message,
+        "office":        office,
         "status":        "open",
         "created_at":    datetime.now().isoformat(),
     }
@@ -920,8 +958,7 @@ def create_escalation(item: EscalationCreate, session = Depends(get_current_user
             raise HTTPException(status_code=500, detail=str(e))
     return {"message": "Escalation submitted (offline).", "escalation": entry}
 
-@app.patch("/escalations/{esc_id}/reply")
-def reply_escalation(esc_id: int, reply: EscalationReply, session = Depends(require_admin)):
+def _reply_escalation(esc_id: int, reply: EscalationReply, session: dict):
     if not SUPABASE_AVAILABLE:
         raise HTTPException(status_code=503, detail="Supabase not connected")
     try:
@@ -935,6 +972,25 @@ def reply_escalation(esc_id: int, reply: EscalationReply, session = Depends(requ
         return {"message": "Reply sent.", "escalation": result.data[0] if result.data else {}}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/escalations/{esc_id}/reply")
+def reply_escalation(esc_id: int, reply: EscalationReply, session = Depends(require_admin)):
+    return _reply_escalation(esc_id, reply, session)
+
+@app.patch("/staff/escalations/{esc_id}/reply")
+def staff_reply_escalation(esc_id: int, reply: EscalationReply, session = Depends(require_staff)):
+    """Staff may reply only to escalations of their own office; admins to any."""
+    if session.get("role") != "admin":
+        own = staff_office(session)
+        try:
+            rows = sb.table("escalations").select("id, office").eq("id", esc_id).execute().data
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        if not rows:
+            raise HTTPException(status_code=404, detail="Escalation not found")
+        if (rows[0].get("office") or "general") != own:
+            raise HTTPException(status_code=403, detail="This escalation belongs to another office")
+    return _reply_escalation(esc_id, reply, session)
 
 @app.get("/escalations/student/{email}")
 def student_escalations(email: str, session = Depends(get_current_user)):

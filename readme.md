@@ -430,11 +430,13 @@ git push origin main
 1. Create account at render.com
 2. Connect GitHub repository
 3. Select "Blueprint" deployment
-4. Configure environment variables:
+4. Configure environment variables (the secrets are `sync: false` in `render.yaml`, so enter them in the dashboard):
    - `SUPABASE_URL`
-   - `SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
    - `GROQ_API_KEY_1`
    - `JWT_SECRET`
+   - `GROQ_MODEL` (optional, defaults to `openai/gpt-oss-20b`)
+   - `RETRIEVAL_MODE` is set to `translate` by `render.yaml` itself
 
 #### 3. Database Setup
 - Create Supabase project
@@ -450,20 +452,33 @@ git push origin main
 
 #### Backend (.env)
 ```bash
-# Database
+# Database (service-role key: the backend bypasses row-level security; never put it in the frontend)
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 # AI
 GROQ_API_KEY_1=your-groq-key
 GROQ_API_KEY_2=backup-key-optional
+GROQ_MODEL=openai/gpt-oss-20b          # optional; this is the default
 
-# Security
-JWT_SECRET=your-256-bit-secret-key
+# Retrieval and answer prompt
+RETRIEVAL_MODE=translate               # production setting (render.yaml). Code default: baseline
+PROMPT_MODE=default                    # default | strict (strict = abstention experiment)
+
+# Security (required; the server refuses to start without it)
+JWT_SECRET=your-256-bit-secret-key     # python -c "import secrets; print(secrets.token_urlsafe(64))"
 
 # Optional
 DOCS_DIR=./uploaded_docs
 ```
+
+`RETRIEVAL_MODE` selects the retrieval used to find context for an answer:
+
+| Value | What it does |
+|---|---|
+| `baseline` | BM25 over all words (code default, kept so the evaluation baseline is reproducible) |
+| `stopwords` | BM25 with English and Hungarian stopwords removed |
+| `translate` | `stopwords`, plus Hungarian questions are translated to English by the LLM before searching; the answer stays in the user's language. **Production setting**: highest answer accuracy in the evaluation (77.1% vs 54.2% for `baseline` on gpt-oss-20b). It costs one extra LLM call per Hungarian question. |
 
 #### Frontend (.env)
 ```bash
