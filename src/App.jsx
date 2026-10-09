@@ -56,6 +56,9 @@ const T = {
     map:"Campus Map",
     myReplies:"My Replies",
     helpful:"Was this helpful?",
+    askAdvisor:"Ask an advisor", escTitle:"Ask an advisor", escIntro:"A staff member of the selected office will reply. You'll find the answer under \"My Replies\".",
+    escSubject:"Subject", escMessage:"Your question", escOffice:"Office", escSend:"Send to advisor", escSending:"Sending…",
+    escSent:"Sent! You'll see the reply under \"My Replies\".", escError:"Could not send. Please try again.", escClose:"Close", escCancel:"Cancel",
     loginTitle:"Sign In", loginBack:"← Back",
     loginRoles:[
       {id:"student",icon:"🎓",label:"Student",color:"#0D9488",desc:"Access your AI academic advisor"},
@@ -96,6 +99,9 @@ const T = {
     map:"Kampusz térkép",
     myReplies:"Válaszaim",
     helpful:"Hasznos volt?",
+    askAdvisor:"Kérdezz egy tanácsadót", escTitle:"Kérdezz egy tanácsadót", escIntro:"A kiválasztott iroda munkatársa válaszol. A választ a \"Válaszaim\" menüben találod.",
+    escSubject:"Tárgy", escMessage:"A kérdésed", escOffice:"Iroda", escSend:"Küldés a tanácsadónak", escSending:"Küldés…",
+    escSent:"Elküldve! A választ a \"Válaszaim\" menüben látod majd.", escError:"Nem sikerült elküldeni. Próbáld újra.", escClose:"Bezárás", escCancel:"Mégse",
     loginTitle:"Bejelentkezés", loginBack:"← Vissza",
     loginRoles:[
       {id:"student",icon:"🎓",label:"Hallgató",color:"#0D9488",desc:"AI tanulmányi tanácsadó"},
@@ -128,12 +134,12 @@ function TypingDots({ C }) {
   );
 }
 
-function StreamingText({ text, C }) {
+function StreamingText({ text, C, onDone }) {
   const [displayed,setDisplayed] = useState("");
   const idx = useRef(0);
   useEffect(()=>{
     idx.current=0; setDisplayed("");
-    const iv=setInterval(()=>{ if(idx.current<text.length){setDisplayed(text.slice(0,++idx.current));}else clearInterval(iv); },8);
+    const iv=setInterval(()=>{ if(idx.current<text.length){setDisplayed(text.slice(0,++idx.current));}else{ clearInterval(iv); if(onDone) onDone(); } },8);
     return()=>clearInterval(iv);
   },[text]);
   return <span style={{ color:C.bubble_ai_text,whiteSpace:"pre-wrap",lineHeight:1.65,fontSize:14 }}>{displayed}</span>;
@@ -356,9 +362,74 @@ function AnnouncementBanner({ C, token }) {
   );
 }
 
-function Bubble({ msg, C, isNew, onFeedback, uiLang }) {
+function EscalateModal({ C, uiLang, msg, user, token, onClose }) {
+  const t = T[uiLang]||T.en;
+  const question = msg.question||"";
+  const [subject,setSubject] = useState(question.length>80 ? question.slice(0,77)+"…" : question);
+  const [message,setMessage] = useState(question);
+  const [office,setOffice]   = useState(msg.office||"general");
+  const [offices,setOffices] = useState([]);
+  const [status,setStatus]   = useState("idle"); // idle | sending | sent | error
+  const [error,setError]     = useState("");
+
+  useEffect(()=>{
+    fetch(`${API}/offices`).then(r=>r.json()).then(d=>setOffices(d.offices||[])).catch(()=>{});
+  },[]);
+
+  const submit = async () => {
+    if(!subject.trim()||!message.trim()||status==="sending") return;
+    setStatus("sending"); setError("");
+    try {
+      const res = await fetch(`${API}/escalations`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
+        body:JSON.stringify({student_name:user.full_name||user.email,subject:subject.trim(),message:message.trim(),office})});
+      if(!res.ok){ const d=await res.json().catch(()=>({})); throw new Error(d.detail||`HTTP ${res.status}`); }
+      setStatus("sent");
+    } catch(e) { setStatus("error"); setError(e.message||""); }
+  };
+
+  const field = { width:"100%",padding:"9px 12px",borderRadius:10,border:`1px solid ${C.inputBorder}`,background:C.input,color:C.text,fontSize:13,fontFamily:"inherit",boxSizing:"border-box" };
+  const label = { fontSize:11,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.4px",margin:"12px 0 5px" };
+  const officeList = offices.length ? offices : [{id:office,name:msg.office_name||office,emoji:msg.office_emoji||"🏛️"}];
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label={t.escTitle} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center" }}>
+      <div style={{ background:C.surface,borderRadius:20,width:"min(480px,93vw)",maxHeight:"88vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)",border:`1px solid ${C.border}`,padding:"20px 22px" }}>
+        <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between" }}>
+          <div style={{ fontSize:16,fontWeight:700,color:C.text }}>🧑‍🏫 {t.escTitle}</div>
+          <button onClick={onClose} aria-label={t.escClose} style={{ background:"transparent",border:"none",fontSize:20,cursor:"pointer",color:C.muted }}>×</button>
+        </div>
+        {status==="sent" ? (
+          <div>
+            <div style={{ margin:"18px 0",fontSize:14,color:C.text,lineHeight:1.6 }}>✅ {t.escSent}</div>
+            <button onClick={onClose} style={{ padding:"9px 18px",borderRadius:10,border:"none",background:C.accent,color:"#fff",fontWeight:600,cursor:"pointer",fontFamily:"inherit" }}>{t.escClose}</button>
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontSize:12,color:C.muted,marginTop:6,lineHeight:1.5 }}>{t.escIntro}</div>
+            <div style={label}>{t.escOffice}</div>
+            <select value={office} onChange={e=>setOffice(e.target.value)} style={field}>
+              {officeList.map(o=><option key={o.id} value={o.id}>{o.emoji} {o.name}</option>)}
+            </select>
+            <div style={label}>{t.escSubject}</div>
+            <input value={subject} onChange={e=>setSubject(e.target.value)} maxLength={120} style={field} />
+            <div style={label}>{t.escMessage}</div>
+            <textarea value={message} onChange={e=>setMessage(e.target.value)} rows={5} style={{ ...field,resize:"vertical",lineHeight:1.5 }} />
+            {status==="error" && <div style={{ color:"#DC2626",fontSize:12,marginTop:10 }}>{t.escError}{error?` (${error})`:""}</div>}
+            <div style={{ display:"flex",gap:8,justifyContent:"flex-end",marginTop:16 }}>
+              <button onClick={onClose} style={{ padding:"9px 16px",borderRadius:10,border:`1px solid ${C.border}`,background:"transparent",color:C.text2,cursor:"pointer",fontFamily:"inherit" }}>{t.escCancel}</button>
+              <button onClick={submit} disabled={status==="sending"||!subject.trim()||!message.trim()} style={{ padding:"9px 18px",borderRadius:10,border:"none",background:C.accent,color:"#fff",fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:(status==="sending"||!subject.trim()||!message.trim())?0.6:1 }}>{status==="sending"?t.escSending:t.escSend}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Bubble({ msg, C, isNew, onFeedback, onEscalate, uiLang }) {
   const isUser = msg.role==="user";
   const [voted,setVoted] = useState(null);
+  const [streamDone,setStreamDone] = useState(false);
   const t = T[uiLang]||T.en;
 
   const vote = (rating) => {
@@ -373,16 +444,19 @@ function Bubble({ msg, C, isNew, onFeedback, uiLang }) {
           <div style={{ width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,#0D9488,#0F766E)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,marginRight:10,flexShrink:0,marginTop:2 }}>🤖</div>
         )}
         <div style={{ maxWidth:"85%",padding:"10px 14px",borderRadius:isUser?"18px 18px 4px 18px":"18px 18px 18px 4px",background:isUser?`linear-gradient(135deg,${C.bubble_user},${C.bubble_user}dd)`:C.bubble_ai,color:isUser?C.bubble_user_text:C.bubble_ai_text,fontSize:14,lineHeight:1.65,boxShadow:isUser?`0 4px 14px ${C.accent}33`:`0 1px 4px rgba(0,0,0,0.06)`,border:!isUser?`1px solid ${C.border}`:"none",whiteSpace:"pre-wrap" }}>
-          {isUser ? msg.content : (isNew ? <StreamingText text={msg.content} C={C} /> : <span style={{ whiteSpace:"pre-wrap",lineHeight:1.65,fontSize:14 }}>{msg.content}</span>)}
+          {isUser ? msg.content : (isNew ? <StreamingText text={msg.content} C={C} onDone={()=>setStreamDone(true)} /> : <span style={{ whiteSpace:"pre-wrap",lineHeight:1.65,fontSize:14 }}>{msg.content}</span>)}
         </div>
       </div>
-      {!isUser && !isNew && (
-        <div style={{ display:"flex",alignItems:"center",gap:6,paddingLeft:40,marginTop:6 }}>
+      {!isUser && (!isNew || streamDone) && (
+        <div style={{ display:"flex",alignItems:"center",flexWrap:"wrap",gap:6,paddingLeft:40,marginTop:6 }}>
           <span style={{ fontSize:11,color:C.muted }}>{t.helpful}</span>
           {[["up","👍"],["down","👎"]].map(([r,icon])=>(
             <button key={r} onClick={()=>vote(r)} style={{ padding:"3px 10px",borderRadius:8,border:`1px solid ${voted===r?C.accent:C.border}`,background:voted===r?`${C.accent}15`:"transparent",color:voted===r?C.accent:C.muted,fontSize:13,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s" }}>{icon}</button>
           ))}
           {voted && <span style={{ fontSize:11,color:C.accent }}>✓</span>}
+          {onEscalate && msg.question && (
+            <button onClick={()=>onEscalate(msg)} style={{ marginLeft:6,padding:"3px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:"transparent",color:C.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit" }}>🧑‍🏫 {t.askAdvisor}</button>
+          )}
         </div>
       )}
       {!isUser && msg.office && (
@@ -515,6 +589,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
   const [showReplies,setShowReplies]     = useState(false);
   const [showOnboarding,setShowOnboarding] = useState(!user.onboarding_done);
   const [repliesCount,setRepliesCount]   = useState(0);
+  const [escalateMsg,setEscalateMsg]     = useState(null);
 
   const bottomRef = useRef();
   const inputRef  = useRef();
@@ -684,7 +759,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
             </div>
           )}
           {messages.map((msg,i)=>(
-            <Bubble key={i} msg={msg} C={C} isNew={i===newMsgIdx} onFeedback={sendFeedback} uiLang={uiLang} />
+            <Bubble key={i} msg={msg} C={C} isNew={i===newMsgIdx} onFeedback={sendFeedback} onEscalate={setEscalateMsg} uiLang={uiLang} />
           ))}
           {loading && (
             <div style={{ display:"flex",alignItems:"flex-start",marginBottom:16 }}>
@@ -737,6 +812,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
       {showEvents     && <EventsPanel    C={C} uiLang={uiLang} onClose={()=>setShowEvents(false)} />}
       {showMap        && <CampusMapPanel C={C} uiLang={uiLang} onClose={()=>setShowMap(false)} />}
       {showReplies    && <RepliesPanel   C={C} user={user} token={token} uiLang={uiLang} onClose={()=>setShowReplies(false)} />}
+      {escalateMsg    && <EscalateModal  C={C} user={user} token={token} uiLang={uiLang} msg={escalateMsg} onClose={()=>setEscalateMsg(null)} />}
       {showSurvey     && (
         <div style={{ position:"fixed",inset:0,zIndex:2000 }}>
           <PublicSurvey token={token} onClose={()=>setShowSurvey(false)} />

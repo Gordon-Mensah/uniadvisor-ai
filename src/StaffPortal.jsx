@@ -45,6 +45,7 @@ const I = {
   clock:    ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
   eye:      ()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
   eyeOff:   ()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>,
+  inbox:    ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>,
   calendar: ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
 };
 
@@ -106,6 +107,15 @@ export default function StaffPortal({ user, token, onLogout }) {
   const [msgText, setMsgText]     = useState("");
   const [msgType, setMsgType]     = useState("info");
   const [sendingMsg, setSendingMsg] = useState(false);
+  // Escalations
+  const [escs, setEscs]           = useState([]);
+  const [escLoading, setEscLoading] = useState(true);
+  const [escError, setEscError]   = useState("");
+  const [escOffice, setEscOffice] = useState("");
+  const [escFilter, setEscFilter] = useState("open");
+  const [escReply, setEscReply]   = useState({});
+  const [escReplying, setEscReplying] = useState(null);
+  const [officeNames, setOfficeNames] = useState({});
   // UI
   const [toast, setToast]         = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -130,7 +140,39 @@ export default function StaffPortal({ user, token, onLogout }) {
     loadActivity();
     loadStudents();
     loadMessages();
+    loadEscalations();
+    fetch(`${API}/offices`).then(r=>r.json()).then(d=>setOfficeNames(Object.fromEntries((d.offices||[]).map(o=>[o.id,`${o.emoji} ${o.name}`])))).catch(()=>{});
   }, []);
+
+  // ── Escalations for this staff member's office ─────────────
+  const loadEscalations = async () => {
+    setEscLoading(true); setEscError("");
+    try {
+      const d = await api("/staff/escalations");
+      setEscs(d.escalations || []);
+      setEscOffice(d.office || "");
+    } catch (e) {
+      setEscError(e.message || "Could not load escalations");
+    }
+    setEscLoading(false);
+  };
+
+  const replyEsc = async (esc) => {
+    const text = (escReply[esc.id] || "").trim();
+    if (!text || escReplying) return;
+    setEscReplying(esc.id);
+    try {
+      const d = await api(`/staff/escalations/${esc.id}/reply`, { method: "PATCH", body: JSON.stringify({ admin_reply: text }) });
+      const updated = d.escalation && d.escalation.id ? d.escalation
+        : { ...esc, admin_reply: text, status: "replied", replied_by: user.email, replied_at: new Date().toISOString() };
+      setEscs(prev => prev.map(e => e.id === esc.id ? { ...e, ...updated } : e));
+      setEscReply(prev => ({ ...prev, [esc.id]: "" }));
+      showToast("Reply sent to the student");
+    } catch (e) {
+      showToast(e.message || "Failed to send reply", "error");
+    }
+    setEscReplying(null);
+  };
 
   const loadAnnouncements = async () => {
     setAnnsLoading(true);
@@ -260,13 +302,16 @@ export default function StaffPortal({ user, token, onLogout }) {
     { id:"activity",      icon:I.activity, label:"Student Activity", badge: null },
     { id:"directory",     icon:I.users,    label:"Student Directory",badge: students.length || null },
     { id:"messages",      icon:I.chat,     label:"Message Log",      badge: messages.length || null },
+    { id:"escalations",   icon:I.inbox,    label:"Escalations",      badge: escs.filter(e=>e.status==="open").length || null },
   ];
   const PAGE = {
     announcements: { title:"Announcements",    sub:"Broadcast to all students — persisted in Supabase" },
     activity:      { title:"Student Activity", sub:"Live questions from real chat logs" },
     directory:     { title:"Student Directory",sub:"All students from Supabase" },
     messages:      { title:"Message Log",      sub:"Messages saved to Supabase" },
+    escalations:   { title:"Escalations",      sub: escOffice ? `Questions students sent to ${officeNames[escOffice] || escOffice}` : "Questions students sent to your office" },
   };
+  const shownEscs = escs.filter(e => escFilter === "all" || e.status === escFilter);
 
   return (
     <div style={{ display:"flex", height:"100vh", fontFamily:"'IBM Plex Sans','Segoe UI',system-ui,sans-serif", background:S.snow, color:S.text, overflow:"hidden", position:"relative" }}>
@@ -603,6 +648,55 @@ export default function StaffPortal({ user, token, onLogout }) {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ══ PAGE: ESCALATIONS ══════════════════════════════════ */}
+        {section === "escalations" && (
+          <div style={{ flex:1, overflowY:"auto", padding:"28px 32px" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:18, flexWrap:"wrap" }}>
+              {[["open","Open"],["replied","Replied"],["all","All"]].map(([id,label])=>(
+                <button key={id} onClick={()=>setEscFilter(id)} style={{ padding:"6px 14px", borderRadius:8, border:`1.5px solid ${escFilter===id?S.teal:S.border}`, background:escFilter===id?S.tealBg:S.white, color:escFilter===id?S.teal2:S.muted, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                  {label} ({id==="all"?escs.length:escs.filter(e=>e.status===id).length})
+                </button>
+              ))}
+              <button onClick={loadEscalations} style={{ marginLeft:"auto", padding:"6px 12px", borderRadius:8, border:`1px solid ${S.border}`, background:S.white, color:S.text2, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Refresh</button>
+            </div>
+            {escLoading && <div style={{ display:"flex", flexDirection:"column", gap:12 }}>{[0,1,2].map(i=><Skeleton key={i} height={90} radius={12} />)}</div>}
+            {!escLoading && escError && (
+              <div style={{ padding:"14px 16px", borderRadius:12, background:S.redBg, color:S.red, fontSize:13, lineHeight:1.5 }}>{escError}</div>
+            )}
+            {!escLoading && !escError && shownEscs.length === 0 && (
+              <div style={{ color:S.muted, fontSize:13, textAlign:"center", padding:"60px 0" }}>No {escFilter === "all" ? "" : escFilter + " "}escalations for your office.</div>
+            )}
+            {!escLoading && !escError && shownEscs.map(esc => (
+              <div key={esc.id} style={{ background:S.white, border:`1px solid ${S.border}`, borderRadius:12, padding:"16px 18px", marginBottom:12 }}>
+                <div style={{ display:"flex", alignItems:"baseline", gap:10, flexWrap:"wrap", marginBottom:6 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:S.text }}>{esc.subject}</div>
+                  <span style={{ fontSize:11, fontWeight:700, padding:"2px 8px", borderRadius:6, background:esc.status==="open"?S.amberBg:S.greenBg, color:esc.status==="open"?S.amber:S.green }}>{esc.status}</span>
+                  <span style={{ fontSize:11, color:S.muted, marginLeft:"auto" }}>{esc.created_at ? new Date(esc.created_at).toLocaleString() : ""}</span>
+                </div>
+                <div style={{ fontSize:12, color:S.muted, marginBottom:8 }}>{esc.student_name} · {esc.student_email}</div>
+                <div style={{ fontSize:13, color:S.text2, lineHeight:1.6, whiteSpace:"pre-wrap", background:S.snow, borderRadius:8, padding:"10px 12px" }}>{esc.message}</div>
+                {esc.admin_reply ? (
+                  <div style={{ marginTop:10, fontSize:13, lineHeight:1.6, background:S.tealBg, border:`1px solid ${S.tealBdr}`, borderRadius:8, padding:"10px 12px", whiteSpace:"pre-wrap" }}>
+                    <span style={{ fontWeight:700, color:S.teal2 }}>Reply by {esc.replied_by || "staff"}: </span>{esc.admin_reply}
+                  </div>
+                ) : (
+                  <div style={{ marginTop:10 }}>
+                    <textarea value={escReply[esc.id] || ""} onChange={e=>setEscReply(prev=>({ ...prev, [esc.id]: e.target.value }))} placeholder="Write your reply to the student…" rows={3}
+                      style={{ width:"100%", padding:"10px 12px", border:`1.5px solid ${S.border}`, borderRadius:9, fontSize:13, fontFamily:"inherit", color:S.text, background:S.white, outline:"none", resize:"vertical", boxSizing:"border-box", lineHeight:1.5 }}
+                      onFocus={e=>e.target.style.borderColor=S.teal} onBlur={e=>e.target.style.borderColor=S.border} />
+                    <div style={{ display:"flex", justifyContent:"flex-end", marginTop:8 }}>
+                      <button onClick={()=>replyEsc(esc)} disabled={!(escReply[esc.id]||"").trim() || escReplying===esc.id}
+                        style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, border:"none", background:(escReply[esc.id]||"").trim()?`linear-gradient(135deg,${S.teal},${S.teal2})`:S.border, color:(escReply[esc.id]||"").trim()?"#fff":S.muted, fontSize:12, fontWeight:700, cursor:(escReply[esc.id]||"").trim()?"pointer":"not-allowed", fontFamily:"inherit" }}>
+                        <I.send />{escReplying===esc.id ? "Sending…" : "Send reply"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
 

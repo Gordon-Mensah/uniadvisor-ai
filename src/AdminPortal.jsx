@@ -141,6 +141,8 @@ export default function AdminPortal({ user, token, onLogout }) {
   const [surveyData,   setSurveyData]   = useState(null);
   const [events, setEvents]             = useState([]);
   const [replyText, setReplyText]       = useState({});
+  const [escOfficeFilter, setEscOfficeFilter] = useState("all");
+  const [officeNames, setOfficeNames]   = useState({});
   const [replying, setReplying]         = useState(null);
   const [newEvent, setNewEvent]         = useState({title:"",description:"",location:"",starts_at:"",category:"academic"});
   const [addingEvent, setAddingEvent]   = useState(false);
@@ -159,6 +161,7 @@ export default function AdminPortal({ user, token, onLogout }) {
     safeFetch(`${API}/expiry-alerts`,    d => setAlerts(d.alerts || []));
     safeFetch(`${API}/office-analytics`, d => setOfficeStats(d.offices || []));
     safeFetch(`${API}/escalations`,      d => setEscalations(d.escalations || []));
+    safeFetch(`${API}/offices`,          d => setOfficeNames(Object.fromEntries((d.offices || []).map(o => [o.id, `${o.emoji} ${o.name}`]))));
     safeFetch(`${API}/audit-log`,        d => setAuditLogs(d.logs || []));
     safeFetch(`${API}/feedback`,         d => setFeedbackData(d));
     safeFetch(`${API}/events`,           d => setEvents(d.events || []));
@@ -224,10 +227,11 @@ export default function AdminPortal({ user, token, onLogout }) {
     const txt = replyText[esc.id]; if(!txt?.trim()) return;
     setReplying(esc.id);
     try {
-      await fetch(`${API}/escalations/${esc.id}/reply`,{method:"PATCH",headers:{"Content-Type":"application/json",...auth},body:JSON.stringify({admin_reply:txt})});
+      const res = await fetch(`${API}/escalations/${esc.id}/reply`,{method:"PATCH",headers:{"Content-Type":"application/json",...auth},body:JSON.stringify({admin_reply:txt})});
+      if(!res.ok){ const d=await res.json().catch(()=>({})); throw new Error(d.detail||`HTTP ${res.status}`); }
       setEscalations(prev=>prev.map(e=>e.id===esc.id?{...e,status:"replied",admin_reply:txt}:e));
       setReplyText(prev=>({...prev,[esc.id]:""}));
-    } catch {}
+    } catch(e) { alert(`Reply failed: ${e.message}`); }
     setReplying(null);
   };
 
@@ -556,10 +560,20 @@ export default function AdminPortal({ user, token, onLogout }) {
           {section === "escalations" && (
             <div>
               <h2 style={{ fontSize:18,fontWeight:700,color:D.text,margin:"0 0 6px",letterSpacing:"-0.3px" }}>Student Escalations</h2>
-              <p style={{ fontSize:12,color:D.text2,margin:"0 0 24px" }}>Direct help requests from students — reply to notify them in-app</p>
-              {escalations.length===0 && <div style={{ color:D.muted,fontSize:12,textAlign:"center",padding:"60px 0" }}>No escalations yet.</div>}
+              <p style={{ fontSize:12,color:D.text2,margin:"0 0 16px" }}>Direct help requests from students — reply to notify them in-app</p>
+              <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:18,flexWrap:"wrap" }}>
+                <label htmlFor="esc-office-filter" style={{ fontSize:11,color:D.text2,fontWeight:600 }}>Office</label>
+                <select id="esc-office-filter" value={escOfficeFilter} onChange={e=>setEscOfficeFilter(e.target.value)}
+                  style={{ padding:"6px 10px",borderRadius:8,border:`1px solid ${D.border}`,background:D.card2,color:D.text,fontSize:12,fontFamily:"inherit" }}>
+                  <option value="all">All offices ({escalations.length})</option>
+                  {[...new Set([...Object.keys(officeNames), ...escalations.map(e=>e.office||"general")])].map(id=>(
+                    <option key={id} value={id}>{officeNames[id]||id} ({escalations.filter(e=>(e.office||"general")===id).length})</option>
+                  ))}
+                </select>
+              </div>
+              {escalations.filter(e=>escOfficeFilter==="all"||(e.office||"general")===escOfficeFilter).length===0 && <div style={{ color:D.muted,fontSize:12,textAlign:"center",padding:"60px 0" }}>{escalations.length===0?"No escalations yet.":"No escalations for this office."}</div>}
               <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
-                {escalations.map(esc=>{
+                {escalations.filter(e=>escOfficeFilter==="all"||(e.office||"general")===escOfficeFilter).map(esc=>{
                   const statusColors={open:D.amber,replied:D.green,closed:D.muted};
                   return (
                     <div key={esc.id} style={{ background:D.card,border:`1px solid ${esc.status==="open"?D.amber+"44":D.border}`,borderRadius:14,padding:18 }}>
@@ -567,6 +581,7 @@ export default function AdminPortal({ user, token, onLogout }) {
                         <div>
                           <div style={{ fontSize:14,fontWeight:700,color:D.text,marginBottom:3 }}>{esc.subject}</div>
                           <div style={{ fontSize:11,color:D.text2 }}>From: {esc.student_name||esc.student_email} · {new Date(esc.created_at).toLocaleString()}</div>
+                          <span style={{ display:"inline-block",marginTop:6,fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:6,background:D.card2,color:D.text2,border:`1px solid ${D.border}` }}>{officeNames[esc.office||"general"]||esc.office||"general"}</span>
                         </div>
                         <span style={{ fontSize:9,fontWeight:700,padding:"3px 10px",borderRadius:20,background:`${statusColors[esc.status]}22`,color:statusColors[esc.status],border:`1px solid ${statusColors[esc.status]}44`,textTransform:"uppercase" }}>{esc.status}</span>
                       </div>
