@@ -68,13 +68,12 @@ except Exception:
     SUPABASE_AVAILABLE = False
 
 from supabase_paging import fetch_all
-from rag import get_answer, get_stats, add_document, load_docs_from_disk, save_docs_to_disk, doc_count, clear_documents, OFFICES, detect_office
-# ingest now handled directly in rag.py via add_document
+from rag import (get_answer, get_stats, load_docs_from_disk, replace_document, delete_document,
+                 list_documents, OFFICES, detect_office)
 
 # ── In-memory fallback stores ─────────────────────────────────
 announcements = []
 faq_cache     = []
-doc_registry  = {}
 feedback_log  = []
 token_store   = {}   # token -> {user_id, expires_at}
 audit_buffer  = []   # buffer if Supabase unavailable
@@ -513,32 +512,51 @@ async def upload_document(file: UploadFile = File(...), office: str = "general",
     try:
         contents = await file.read()
         text = _extract_text(contents, file.filename)
-        add_document(text, source=file.filename, office=office)
-        save_docs_to_disk()
-        chunks = doc_count()
-        doc_registry[file.filename] = {
-            "uploaded_at": datetime.now().isoformat(),
-            "size_kb":     round(len(contents) / 1024, 1),
-            "chunks":      chunks,
-            "office":      office,
-        }
-        return {"message": f"'{file.filename}' ingested.", "chunks": chunks}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if office not in OFFICES:
+        raise HTTPException(status_code=400, detail=f"Unknown office '{office}'")
+    try:
+        # Replaces an earlier upload with the same name; only this document's rows change.
+        replaced = any(d["name"] == file.filename for d in list_documents())
+        chunks = replace_document(text, source=file.filename, office=office)
+        audit(session["email"], session["role"], "UPLOAD_DOCUMENT", file.filename,
+              {"chunks": chunks, "office": office, "replaced": replaced})
+        verb = "replaced" if replaced else "ingested"
+        return {"message": f"'{file.filename}' {verb}.", "chunks": chunks, "replaced": replaced}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/documents")
 def documents():
-    enriched = []
-    for name, info in doc_registry.items():
-        enriched.append({
-            "name":        name,
-            "office":      info.get("office","general"),
-            "uploaded_at": info.get("uploaded_at","Unknown"),
-            "size_kb":     info.get("size_kb", 0),
-            "chunks":      info.get("chunks", 0),
-        })
-    return {"documents": enriched}
+    """One row per stored document (from Supabase when connected): name, office, chunks, uploaded_at."""
+    try:
+        return {"documents": list_documents()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/documents/{name:path}")
+def remove_document(name: str, session = Depends(require_admin)):
+    """Delete one document (all its chunks) from memory and Supabase. Admin only."""
+    try:
+        removed = delete_document(name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"Document '{name}' not found")
+    audit(session["email"], session["role"], "DELETE_DOCUMENT", name, {"chunks": removed})
+    return {"message": f"'{name}' deleted.", "chunks_removed": removed}
+
+
+def _days_since(iso):
+    from datetime import timezone
+    when = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+    now = datetime.now(timezone.utc) if when.tzinfo else datetime.now()
+    return (now - when).days
 
 @app.get("/stats")
 def stats():
@@ -547,15 +565,18 @@ def stats():
 @app.get("/expiry-alerts")
 def get_expiry_alerts():
     alerts = []
-    for name, info in doc_registry.items():
+    try:
+        docs = list_documents()
+    except Exception:
+        docs = []
+    for doc in docs:
         try:
-            uploaded = datetime.fromisoformat(info["uploaded_at"])
-            days_old = (datetime.now() - uploaded).days
+            days_old = _days_since(doc["uploaded_at"])
             if days_old >= 90:
                 alerts.append({
-                    "filename":    name,
+                    "filename":    doc["name"],
                     "days_old":    days_old,
-                    "uploaded_at": info["uploaded_at"],
+                    "uploaded_at": doc["uploaded_at"],
                     "severity":    "high" if days_old >= 180 else "medium",
                 })
         except Exception:
@@ -1186,8 +1207,9 @@ async def translate_document(file: UploadFile = File(...), target_language: str 
 def get_offices():
     try:
         items = []
+        docs = list_documents()
         for oid, info in OFFICES.items():
-            count = sum(1 for d in doc_registry.values() if d.get("office") == oid)
+            count = sum(1 for d in docs if d.get("office") == oid)
             items.append({"id": oid, "name": info["name"], "emoji": info.get("emoji","🏛️"), "doc_count": count})
         return {"offices": items}
     except Exception as e:
@@ -1196,8 +1218,7 @@ def get_offices():
 @app.get("/offices/{office_id}/documents")
 def office_documents(office_id: str):
     try:
-        docs = [{"name": name, "office": office_id, **info}
-                for name, info in doc_registry.items() if info.get("office") == office_id]
+        docs = [d for d in list_documents() if d.get("office") == office_id]
         return {"documents": docs, "office_id": office_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
