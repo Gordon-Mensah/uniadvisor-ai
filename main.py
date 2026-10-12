@@ -346,7 +346,9 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "supabase": SUPABASE_AVAILABLE, "bcrypt": BCRYPT_AVAILABLE}
+    from groq_key_rotator import current_model
+    return {"status": "ok", "supabase": SUPABASE_AVAILABLE, "bcrypt": BCRYPT_AVAILABLE,
+            "model": current_model()}
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -442,13 +444,13 @@ async def chat(req: ChatRequest, session = Depends(get_current_user)):
         import threading
         def _log_async():
             try:
+                # Anonymous log: no student name or nationality is stored
+                # (the chat_logs columns still exist but are no longer written).
                 sb.table("chat_logs").insert({
                     "question":     req.message,
                     "answer":       answer[:500],
-                    "student_name": req.student_name,
                     "major":        req.student_major,
                     "year_of_study":req.student_year,
-                    "nationality":  req.student_nationality,
                     "office_routed":detected_office,
                     "session_id":   req.session_id,
                     "asked_at":     datetime.now().isoformat(),
@@ -655,7 +657,7 @@ def staff_activity(session = Depends(require_staff)):
     if not SUPABASE_AVAILABLE:
         return {"activity": []}
     try:
-        result = sb.table("chat_logs").select("student_name, major, question, asked_at") \
+        result = sb.table("chat_logs").select("major, question, asked_at") \
                    .order("asked_at", desc=True).limit(50).execute()
         return {"activity": result.data or []}
     except Exception as e:

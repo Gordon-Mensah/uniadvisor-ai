@@ -42,7 +42,7 @@ const T = {
       {icon:"🎯",label:"Career Guidance"},
     ],
     navQuery:(l)=>`Tell me about ${l} at Dunaújváros Egyetem`,
-    topbarTitle:"AI Academic Advisor", topbarSub:"RAG · Groq LLaMA3 · BM25",
+    topbarTitle:"AI Academic Advisor", topbarSub:"RAG · Groq · BM25",
     export:"Export Chat", online:"Online",
     welcomeHi:(n)=>`Hi ${n}, I'm your AI Advisor!`,
     welcomeSub:"Ask me anything about courses, deadlines, scholarships, or university policies.",
@@ -85,7 +85,7 @@ const T = {
       {icon:"🎯",label:"Karriertanácsadás"},
     ],
     navQuery:(l)=>`Mesélj erről: ${l} a Dunaújvárosi Egyetemen`,
-    topbarTitle:"AI Tanulmányi Tanácsadó", topbarSub:"RAG · Groq LLaMA3 · BM25",
+    topbarTitle:"AI Tanulmányi Tanácsadó", topbarSub:"RAG · Groq · BM25",
     export:"Chat exportálása", online:"Online",
     welcomeHi:(n)=>`Szia ${n}, az AI tanácsadód vagyok!`,
     welcomeSub:"Kérdezz bármit kurzusokról, határidőkről, ösztöndíjakról vagy az egyetem szabályzatairól.",
@@ -328,12 +328,12 @@ function AnnouncementBanner({ C, token }) {
   },[]);
 
   const record = (id, action) => token && fetch(`${API}/announcements/${id}/read`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({action})}).catch(()=>{});
-  const dismiss = async (id) => {
-    setDismissed(prev=>new Set([...prev,id]));
-    await record(id,"dismissed");
+  const dismiss = async (b) => {
+    setDismissed(prev=>new Set([...prev,...b.ids]));
+    await Promise.all(b.ids.map(id=>record(id,"dismissed")));
   };
-  const markRead = async (id) => {
-    await record(id,"read");
+  const markRead = async (b) => {
+    await Promise.all(b.ids.map(id=>record(id,"read")));
   };
 
   const TYPE_COLORS = {
@@ -342,7 +342,17 @@ function AnnouncementBanner({ C, token }) {
     urgent: {bg:"#FEF2F2",border:"#FECACA",text:"#DC2626",icon:"🚨"},
   };
 
-  const visible = banners.filter(b=>!dismissed.has(b.id));
+  // The announcements table can contain duplicate rows (same text posted more than once);
+  // show each distinct announcement once, newest first, and keep all its ids for read/dismiss.
+  const unique = [];
+  const byKey = new Map();
+  for (const b of banners) {
+    const key = `${b.type||"info"}|${(b.text||"").trim()}`;
+    if (byKey.has(key)) { byKey.get(key).ids.push(b.id); continue; }
+    const entry = { ...b, ids:[b.id] };
+    byKey.set(key, entry); unique.push(entry);
+  }
+  const visible = unique.filter(b=>!b.ids.every(id=>dismissed.has(id)));
   if(!visible.length) return null;
 
   return (
@@ -350,11 +360,11 @@ function AnnouncementBanner({ C, token }) {
       {visible.map(b=>{
         const tc = TYPE_COLORS[b.type]||TYPE_COLORS.info;
         return (
-          <div key={b.id} onMouseEnter={()=>markRead(b.id)}
+          <div key={b.id} onMouseEnter={()=>markRead(b)}
             style={{ background:tc.bg,borderBottom:`1px solid ${tc.border}`,padding:"10px 24px",display:"flex",alignItems:"center",gap:10 }}>
             <span style={{ fontSize:14 }}>{tc.icon}</span>
             <span style={{ fontSize:13,color:tc.text,fontWeight:500,flex:1 }}>{b.text}</span>
-            <button onClick={()=>dismiss(b.id)} style={{ background:"transparent",border:"none",color:tc.text,opacity:0.6,cursor:"pointer",fontSize:16,padding:"0 4px" }}>×</button>
+            <button onClick={()=>dismiss(b)} aria-label="Dismiss announcement" style={{ background:"transparent",border:"none",color:tc.text,opacity:0.6,cursor:"pointer",fontSize:16,padding:"0 4px" }}>×</button>
           </div>
         );
       })}
@@ -590,6 +600,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
   const [showOnboarding,setShowOnboarding] = useState(!user.onboarding_done);
   const [repliesCount,setRepliesCount]   = useState(0);
   const [escalateMsg,setEscalateMsg]     = useState(null);
+  const [llmModel,setLlmModel]           = useState("");   // GROQ_MODEL from /health, shown in the header
 
   const bottomRef = useRef();
   const inputRef  = useRef();
@@ -600,6 +611,10 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
       .then(r=>r.json()).then(d=>{ setRepliesCount((d.escalations||[]).filter(e=>e.admin_reply&&e.status==="replied").length); })
       .catch(()=>{});
   },[user.email]);
+
+  useEffect(()=>{
+    fetch(`${API}/health`).then(r=>r.json()).then(d=>{ if(d&&d.model) setLlmModel(d.model); }).catch(()=>{});
+  },[]);
 
   const handleOnboardingDone = async () => {
     setShowOnboarding(false);
@@ -719,7 +734,7 @@ function ChatApp({ user, token, onLogout, darkMode, setDarkMode }) {
             <button className="hamburger-btn" onClick={()=>setSidebarOpen(o=>!o)} style={{ display:"none",background:"transparent",border:"none",cursor:"pointer",padding:4,color:C.text,fontSize:20 }}>☰</button>
             <div>
               <div style={{ fontSize:14,fontWeight:700,color:C.text }}>{t.topbarTitle}</div>
-              <div style={{ fontSize:11,color:C.muted }}>{t.topbarSub}</div>
+              <div style={{ fontSize:11,color:C.muted }}>{llmModel ? `RAG · Groq ${llmModel} · BM25` : t.topbarSub}</div>
             </div>
           </div>
           <div style={{ display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#059669",background:"#F0FDF4",border:"1px solid #A7F3D0",borderRadius:20,padding:"4px 12px" }}>

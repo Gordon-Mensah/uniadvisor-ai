@@ -3,7 +3,7 @@
 //  ✓ Announcements persisted in Supabase (survive refresh)
 //  ✓ Scheduled announcements (future publish date/time)
 //  ✓ Read/dismissed receipts per student
-//  ✓ Student activity from real Supabase chat_logs table
+//  ✓ Student activity from real Supabase chat_logs table (anonymous: no names)
 //  ✓ Student directory from real Supabase users table
 //  ✓ Messages saved to Supabase staff_messages table
 // ═══════════════════════════════════════════════════════════
@@ -197,7 +197,6 @@ export default function StaffPortal({ user, token, onLogout }) {
     try {
       const data = (await api("/staff/activity")).activity || [];
       setActivity(data.map(r => ({
-        student: r.student_name || "Unknown",
         major:   r.major || "—",
         q:       r.question,
         time:    timeAgo(r.asked_at),
@@ -294,7 +293,7 @@ export default function StaffPortal({ user, token, onLogout }) {
   const [actMajor, setActMajor]     = useState("All");
   const filteredActivity = activity.filter(a =>
     (actMajor === "All" || a.major === actMajor) &&
-    (actSearch === "" || a.student.toLowerCase().includes(actSearch.toLowerCase()) || a.q.toLowerCase().includes(actSearch.toLowerCase()))
+    (actSearch === "" || (a.q || "").toLowerCase().includes(actSearch.toLowerCase()))
   );
 
   const NAV = [
@@ -505,10 +504,10 @@ export default function StaffPortal({ user, token, onLogout }) {
                   onMouseEnter={e=>e.currentTarget.style.background=S.ice}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                 >
-                  <div style={{ width:32, height:32, borderRadius:"50%", background:`hsl(${(i*47)%360},60%,90%)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:`hsl(${(i*47)%360},50%,35%)`, flexShrink:0 }}>{item.student.split(" ").map(w=>w[0]).join("").slice(0,2)}</div>
+                  <div style={{ width:32, height:32, borderRadius:"50%", background:`hsl(${(i*47)%360},60%,90%)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:`hsl(${(i*47)%360},50%,35%)`, flexShrink:0 }}>?</div>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ display:"flex", gap:6, marginBottom:2 }}>
-                      <span style={{ fontSize:12, fontWeight:700, color:S.text }}>{item.student}</span>
+                      <span style={{ fontSize:12, fontWeight:700, color:S.text }}>Anonymous student</span>
                       <span style={{ fontSize:10, color:S.muted, background:S.ice, padding:"1px 6px", borderRadius:4 }}>{item.major}</span>
                       <span style={{ fontSize:10, color:S.muted, marginLeft:"auto" }}>{item.time}</span>
                     </div>
@@ -539,7 +538,7 @@ export default function StaffPortal({ user, token, onLogout }) {
           <div style={{ flex:1, overflowY:"auto", padding:"28px 32px" }}>
             <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20, flexWrap:"wrap" }}>
               <div style={{ position:"relative", flex:1, maxWidth:320 }}>
-                <input value={actSearch} onChange={e=>setActSearch(e.target.value)} placeholder="Search name or question…"
+                <input value={actSearch} onChange={e=>setActSearch(e.target.value)} placeholder="Search questions…"
                   style={{ width:"100%", padding:"9px 14px 9px 36px", border:`1.5px solid ${S.border}`, borderRadius:10, fontSize:13, fontFamily:"inherit", color:S.text, background:S.white, outline:"none", boxSizing:"border-box" }}
                   onFocus={e=>e.target.style.borderColor=S.teal} onBlur={e=>e.target.style.borderColor=S.border}
                 />
@@ -574,8 +573,8 @@ export default function StaffPortal({ user, token, onLogout }) {
                 onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}
               >
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                  <div style={{ width:28, height:28, borderRadius:"50%", background:`hsl(${(i*47)%360},60%,90%)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:800, color:`hsl(${(i*47)%360},50%,35%)`, flexShrink:0 }}>{item.student.split(" ").map(w=>w[0]).join("").slice(0,2)}</div>
-                  <span style={{ fontSize:12, fontWeight:700, color:S.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.student}</span>
+                  <div style={{ width:28, height:28, borderRadius:"50%", background:`hsl(${(i*47)%360},60%,90%)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:800, color:`hsl(${(i*47)%360},50%,35%)`, flexShrink:0 }}>?</div>
+                  <span style={{ fontSize:12, fontWeight:700, color:S.muted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>Anonymous</span>
                 </div>
                 <div style={{ fontSize:11, color:S.muted, background:S.ice, padding:"2px 8px", borderRadius:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.major}</div>
                 <div style={{ fontSize:12, color:S.text2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>"{item.q}"</div>

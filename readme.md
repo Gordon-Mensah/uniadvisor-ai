@@ -168,10 +168,10 @@ CREATE TABLE chat_logs (
   id SERIAL PRIMARY KEY,
   question TEXT,
   answer TEXT,
-  student_name TEXT,
+  student_name TEXT,      -- no longer written (anonymous logs); kept for old rows
   major TEXT,
   year_of_study TEXT,
-  nationality TEXT,
+  nationality TEXT,       -- no longer written (anonymous logs); kept for old rows
   office_routed TEXT,
   session_id TEXT,
   asked_at TIMESTAMP DEFAULT NOW()
@@ -391,10 +391,10 @@ CREATE TABLE chat_logs (
   id SERIAL PRIMARY KEY,
   question TEXT,
   answer TEXT,
-  student_name TEXT,
+  student_name TEXT,      -- no longer written (anonymous logs); kept for old rows
   major TEXT,
   year_of_study TEXT,
-  nationality TEXT,
+  nationality TEXT,       -- no longer written (anonymous logs); kept for old rows
   office_routed TEXT,
   session_id TEXT,
   asked_at TIMESTAMP DEFAULT NOW()
