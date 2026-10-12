@@ -129,6 +129,8 @@ export default function AdminPortal({ user, token, onLogout }) {
   const [posting, setPosting]   = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState("");
+  const [confirmDel, setConfirmDel] = useState(null);   // document name awaiting delete confirmation
+  const [deleting, setDeleting]     = useState(null);
   const [transFile, setTransFile] = useState(null);
   const [transLang, setTransLang] = useState("en");
   const [translating, setTranslating] = useState(false);
@@ -202,13 +204,32 @@ export default function AdminPortal({ user, token, onLogout }) {
       if (res.status === 401) {
         setUploadMsg("✗ Upload failed (401) — try refreshing the page");
       } else if (res.ok) {
-        setUploadMsg(`✓ ${data.message}`);
-        setDocs(prev => [...prev, { name: file.name, uploaded_at: new Date().toISOString(), chunks: data.chunks }]);
+        setUploadMsg(`✓ ${data.message} (${data.chunks} chunks)`);
+        loadDocs();
       } else {
         setUploadMsg(`✗ ${data.detail || "Upload failed"}`);
       }
     } catch { setUploadMsg("✗ Connection failed — check the server is running."); }
     setUploading(false);
+    if (fileRef.current) fileRef.current.value = "";   // allow re-uploading the same file name
+  };
+
+  // Documents list always comes from the server (the database), never from local state.
+  const loadDocs = () => {
+    safeFetch(`${API}/documents`, d => setDocs(d.documents || []));
+    safeFetch(`${API}/expiry-alerts`, d => setAlerts(d.alerts || []));
+  };
+
+  const deleteDoc = async (name) => {
+    setDeleting(name);
+    try {
+      const res = await fetch(`${API}/documents/${encodeURIComponent(name)}`, { method: "DELETE", headers: auth });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+      setUploadMsg(`✓ ${data.message} (${data.chunks_removed} chunks removed)`);
+    } catch (e) { setUploadMsg(`✗ Delete failed: ${e.message}`); }
+    setDeleting(null); setConfirmDel(null);
+    loadDocs();
   };
 
   const runTranslate = async () => {
@@ -544,9 +565,23 @@ export default function AdminPortal({ user, token, onLogout }) {
                         <div style={{ width: 32, height: 32, borderRadius: 8, background: D.purpleGl, border: `1px solid ${D.purpleBr}`, display: "flex", alignItems: "center", justifyContent: "center", color: D.violet, flexShrink: 0 }}><DIcon.doc /></div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 12, fontWeight: 600, color: D.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
-                          {info.uploaded_at && <div style={{ fontSize: 10, color: D.muted, marginTop: 2 }}>{new Date(info.uploaded_at).toLocaleDateString()} · {info.chunks || 0} chunks indexed</div>}
+                          {info.uploaded_at && <div style={{ fontSize: 10, color: D.muted, marginTop: 2 }}>{new Date(info.uploaded_at).toLocaleDateString()} · {info.chunks || 0} chunks indexed{info.office && info.office !== "general" ? ` · ${info.office}` : ""}</div>}
+                          {!info.uploaded_at && info.chunks != null && <div style={{ fontSize: 10, color: D.muted, marginTop: 2 }}>{info.chunks} chunks indexed</div>}
                         </div>
                         <div style={{ fontSize: 10, color: D.green, background: D.greenGl, padding: "2px 8px", borderRadius: 4, fontWeight: 700 }}>ACTIVE</div>
+                        {confirmDel === name ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 11, color: D.red, fontWeight: 600 }}>Delete?</span>
+                            <button onClick={() => deleteDoc(name)} disabled={deleting === name} aria-label={`Confirm delete ${name}`}
+                              style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: D.red, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: deleting === name ? 0.6 : 1 }}>
+                              {deleting === name ? "Deleting…" : "Yes, delete"}</button>
+                            <button onClick={() => setConfirmDel(null)} disabled={deleting === name}
+                              style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setConfirmDel(name)} aria-label={`Delete ${name}`}
+                            style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>Delete</button>
+                        )}
                       </div>
                     );
                   })}

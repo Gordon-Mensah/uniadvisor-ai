@@ -149,58 +149,161 @@ def _chunk_text(text, chunk_size=400, overlap=80):
         i += chunk_size - overlap
     return chunks
 
-def add_document(text, source, office="general", page=None):
+INSERT_BATCH = 500   # rows per Supabase insert request
+
+
+def _now_iso():
+    return datetime.now().isoformat()
+
+
+def add_document(text, source, office="general", page=None, uploaded_at=None):
+    """Add a document to the in-memory index only (used by evaluation scripts).
+
+    Persistent uploads go through replace_document(), which also writes to Supabase.
+    """
+    uploaded_at = uploaded_at or _now_iso()
     chunks = _chunk_text(text)
     with _doc_lock:
         for chunk in chunks:
-            _doc_chunks.append({"text":chunk,"source":source,"office":office,"page":page,"tokens":_tokenize(chunk)})
+            _doc_chunks.append({"text":chunk,"source":source,"office":office,"page":page,
+                                "uploaded_at":uploaded_at,"tokens":_tokenize(chunk)})
     print(f"[UniAdvisor] +{len(chunks)} chunks '{source}' office={office}")
-    
-    # Also persist to Supabase so documents survive server restarts
-    if SUPABASE_AVAILABLE:
-        try:
-            for chunk in chunks:
-                sb.table("document_chunks").insert({
-                    "text": chunk,
-                    "source": source,
-                    "office": office,
-                    "page": page,
-                }).execute()
-        except Exception as e:
-            print(f"[UniAdvisor] Supabase insert failed (non-fatal): {e}")
+    return len(chunks)
 
-def clear_documents(office=None):
-    global _doc_chunks
+
+_has_uploaded_at = True   # becomes False if document_chunks has no uploaded_at column yet
+
+
+def _missing_uploaded_at(error):
+    return "uploaded_at" in str(error) and ("does not exist" in str(error) or "column" in str(error))
+
+
+def _insert_batches(rows, inserted_ids):
+    """Insert rows into document_chunks in batches, appending each batch's ids to inserted_ids
+    as it succeeds (so a caller can clean up after a failure part-way through)."""
+    global _has_uploaded_at
+    for i in range(0, len(rows), INSERT_BATCH):
+        batch = rows[i:i + INSERT_BATCH]
+        if not _has_uploaded_at:
+            batch = [{k: v for k, v in r.items() if k != "uploaded_at"} for r in batch]
+        try:
+            result = sb.table("document_chunks").insert(batch).execute()
+        except Exception as e:
+            if not (_has_uploaded_at and _missing_uploaded_at(e)):
+                raise
+            _has_uploaded_at = False
+            print("[UniAdvisor] WARNING: document_chunks has no uploaded_at column; "
+                  "run supabase/document_chunks_uploaded_at.sql. Storing without upload dates.")
+            batch = [{k: v for k, v in r.items() if k != "uploaded_at"} for r in batch]
+            result = sb.table("document_chunks").insert(batch).execute()
+        inserted_ids.extend(r["id"] for r in (result.data or []) if "id" in r)
+
+
+def _delete_ids(ids):
+    for i in range(0, len(ids), INSERT_BATCH):
+        sb.table("document_chunks").delete().in_("id", ids[i:i + INSERT_BATCH]).execute()
+
+
+def replace_document(text, source, office="general", page=None):
+    """Store a document permanently, replacing any earlier version with the same name.
+
+    Only this document's rows are touched. Supabase: the new chunks are inserted
+    first (in batches), then the old version's rows are deleted by id. If the insert
+    fails, the partial new rows are removed and the old version stays intact.
+    Returns the number of chunks stored for this document.
+    """
+    chunks = _chunk_text(text)
+    if not chunks:
+        raise ValueError(f"No text could be extracted from '{source}'")
+    uploaded_at = _now_iso()
+    rows = [{"text": c, "source": source, "office": office, "page": page, "uploaded_at": uploaded_at}
+            for c in chunks]
+
+    if SUPABASE_AVAILABLE:
+        old_ids = [r["id"] for r in fetch_all(
+            lambda: sb.table("document_chunks").select("id").eq("source", source),
+            label="document_chunks (old version)")]
+        new_ids = []
+        try:
+            _insert_batches(rows, new_ids)
+        except Exception:
+            if new_ids:
+                try:
+                    _delete_ids(new_ids)
+                except Exception as cleanup_error:
+                    print(f"[UniAdvisor] Could not remove partial upload of '{source}': {cleanup_error}")
+            raise
+        if old_ids:
+            _delete_ids(old_ids)
+
+    new_chunks = [{**r, "tokens": _tokenize(r["text"])} for r in rows]
     with _doc_lock:
-        _doc_chunks = [d for d in _doc_chunks if d["office"]!=office] if office else []
+        _doc_chunks[:] = [d for d in _doc_chunks if d["source"] != source] + new_chunks
+    save_local_cache()
+    print(f"[UniAdvisor] Stored '{source}': {len(chunks)} chunks (office={office})")
+    return len(chunks)
+
+
+def delete_document(source):
+    """Remove one document everywhere. Returns the number of chunks removed (0 = not found)."""
+    removed_db = 0
+    if SUPABASE_AVAILABLE:
+        result = sb.table("document_chunks").delete().eq("source", source).execute()
+        removed_db = len(result.data or [])
+    with _doc_lock:
+        before = len(_doc_chunks)
+        _doc_chunks[:] = [d for d in _doc_chunks if d["source"] != source]
+        removed_mem = before - len(_doc_chunks)
+    save_local_cache()
+    removed = max(removed_db, removed_mem)
+    if removed:
+        print(f"[UniAdvisor] Deleted '{source}': {removed} chunks")
+    return removed
+
+
+def list_documents():
+    """One entry per document: name, office, chunk count, upload date (from Supabase when available)."""
+    global _has_uploaded_at
+    if SUPABASE_AVAILABLE:
+        cols = "source, office, uploaded_at" if _has_uploaded_at else "source, office"
+        try:
+            rows = fetch_all(lambda: sb.table("document_chunks").select(cols),
+                             order=[("source", False)], label="document_chunks (list)")
+        except Exception as e:
+            if not (_has_uploaded_at and _missing_uploaded_at(e)):
+                raise
+            _has_uploaded_at = False
+            rows = fetch_all(lambda: sb.table("document_chunks").select("source, office"),
+                             order=[("source", False)], label="document_chunks (list)")
+    else:
+        with _doc_lock:
+            rows = [{"source": d["source"], "office": d.get("office"), "uploaded_at": d.get("uploaded_at")}
+                    for d in _doc_chunks]
+    docs = {}
+    for r in rows:
+        d = docs.setdefault(r["source"], {"name": r["source"], "office": r.get("office") or "general",
+                                          "chunks": 0, "uploaded_at": None})
+        d["chunks"] += 1
+        if r.get("uploaded_at") and (d["uploaded_at"] is None or r["uploaded_at"] > d["uploaded_at"]):
+            d["uploaded_at"], d["office"] = r["uploaded_at"], r.get("office") or "general"
+    return sorted(docs.values(), key=lambda d: d["name"].lower())
+
 
 def doc_count():
     return len(_doc_chunks)
 
-def save_docs_to_disk():
+
+def save_local_cache():
+    """Write the in-memory index to DOCS_DIR/_chunks.json (fallback when Supabase is unavailable).
+
+    Local file only: never touches Supabase.
+    """
     os.makedirs(DOCS_DIR, exist_ok=True)
     with _doc_lock:
-        data = [{"text":d["text"],"source":d["source"],"office":d["office"],"page":d["page"]} for d in _doc_chunks]
+        data = [{"text":d["text"],"source":d["source"],"office":d["office"],"page":d["page"],
+                 "uploaded_at":d.get("uploaded_at")} for d in _doc_chunks]
     with open(os.path.join(DOCS_DIR,"_chunks.json"),"w",encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
-    print(f"[UniAdvisor] Saved {len(data)} chunks to disk")
-    
-    # Also save to Supabase for production resilience
-    if SUPABASE_AVAILABLE:
-        try:
-            # Clear old chunks first to avoid duplicates
-            sb.table("document_chunks").delete().neq("id", 0).execute()
-            # Insert all current chunks
-            for item in data:
-                sb.table("document_chunks").insert({
-                    "text": item["text"],
-                    "source": item["source"],
-                    "office": item["office"],
-                    "page": item["page"],
-                }).execute()
-            print(f"[UniAdvisor] Synced {len(data)} chunks to Supabase")
-        except Exception as e:
-            print(f"[UniAdvisor] Supabase sync warning (non-fatal): {e}")
 
 def load_docs_from_disk():
     global _doc_chunks
@@ -212,7 +315,7 @@ def load_docs_from_disk():
             rows = fetch_all(lambda: sb.table("document_chunks").select("*"), label="document_chunks")
             if rows:
                 with _doc_lock:
-                    _doc_chunks = [{"text":d["text"],"source":d["source"],"office":d.get("office","general"),"page":d.get("page"),"tokens":_tokenize(d["text"])} for d in rows]
+                    _doc_chunks = [{"text":d["text"],"source":d["source"],"office":d.get("office","general"),"page":d.get("page"),"uploaded_at":d.get("uploaded_at"),"tokens":_tokenize(d["text"])} for d in rows]
                 print(f"[UniAdvisor] Loaded {len(_doc_chunks)} chunks from Supabase ({len({d['source'] for d in rows})} documents)")
                 return
         except Exception as e:
@@ -226,7 +329,7 @@ def load_docs_from_disk():
     with open(path,"r",encoding="utf-8") as f:
         data = json.load(f)
     with _doc_lock:
-        _doc_chunks = [{"text":d["text"],"source":d["source"],"office":d.get("office","general"),"page":d.get("page"),"tokens":_tokenize(d["text"])} for d in data]
+        _doc_chunks = [{"text":d["text"],"source":d["source"],"office":d.get("office","general"),"page":d.get("page"),"uploaded_at":d.get("uploaded_at"),"tokens":_tokenize(d["text"])} for d in data]
     print(f"[UniAdvisor] Loaded {len(_doc_chunks)} chunks from disk")
 
 
