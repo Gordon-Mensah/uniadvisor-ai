@@ -7,8 +7,8 @@ import { useState, useRef } from "react";
 // ── Buildings positioned as % of the official campus map image ──
 // Calibrated against campus_terkep_ENG.png building positions
 const BUILDINGS = [
-  { id:"F",  label:"F",  name:"Main Building",                   hu:"Főépület",                       icon:"🏛️", color:"#E53E3E", x:54, y:42, w:7,  h:8,
-    room:"Main Building, Ground Floor",        hours:"Mon–Fri 8:00–16:00",              dept:"Rector's Office / Administration",
+  { id:"F",  label:"F",  name:'Building "F" — Main Building · Study Office', hu:"F épület — Főépület · Tanulmányi Iroda", icon:"🏛️", color:"#E53E3E", x:54, y:42, w:7,  h:8,
+    room:"Ground Floor · Study Office: room 13/b (F épület, földszint 13/b)", hours:"Mon–Fri 8:00–16:00", dept:"Rector's Office / Administration · Study Office (Tanulmányi Iroda)",
     gmaps:"https://maps.google.com/?q=Dunaújvárosi+Egyetem+Főépület,+Táncsics+Mihály+u.+1/a,+Dunaújváros" },
   { id:"M1", label:"M₁", name:"Technical Wing 1",                hu:"Műszaki szárny 1",               icon:"⚙️", color:"#DD6B20", x:47, y:38, w:6,  h:6,
     room:"Technical Wing 1",                   hours:"Mon–Fri 8:00–17:00",              dept:"Engineering Faculty – M₁",
@@ -19,8 +19,8 @@ const BUILDINGS = [
   { id:"I",  label:"I",  name:"IT Building",                     hu:"IT épület",                      icon:"💻", color:"#38A169", x:61, y:38, w:5,  h:7,
     room:"IT Building, 2nd Floor, Room 201",   hours:"Mon–Fri 8:00–16:00",              dept:"IT Helpdesk & Computer Labs",
     gmaps:"https://maps.google.com/?q=Dunaújvárosi+Egyetem+IT+épület,+Dunaújváros" },
-  { id:"A",  label:"A",  name:'Building "A" — Study Office',     hu:"A épület — Tanulmányi Iroda",    icon:"📚", color:"#3182CE", x:62, y:55, w:8,  h:8,
-    room:"A épület, 1.em. 103.",               hours:"Mon–Thu 9:00–13:00, Fri 9:00–11:00", dept:"Study Office (Tanulmányi Iroda) · Finance",
+  { id:"A",  label:"A",  name:'Building "A"',                     hu:"A épület",                       icon:"🏢", color:"#3182CE", x:62, y:55, w:8,  h:8,
+    room:"A épület",                           hours:"Mon–Thu 9:00–13:00, Fri 9:00–11:00", dept:"Finance",
     gmaps:"https://maps.google.com/?q=Dunaújvárosi+Egyetem+A+épület,+Táncsics+Mihály+u.+1/a,+Dunaújváros" },
   { id:"B",  label:"B",  name:'Building "B" — IRO',              hu:"B épület — Nemzetközi Iroda",    icon:"🌍", color:"#805AD5", x:38, y:44, w:6,  h:6,
     room:"B épület, Ground Floor 002",         hours:"Mon–Fri 9:00–15:00",              dept:"International Relations Office (IRO)",
