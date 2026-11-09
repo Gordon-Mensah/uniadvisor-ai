@@ -383,8 +383,8 @@ function EscalateModal({ C, uiLang, msg, user, token, onClose }) {
   const [error,setError]     = useState("");
 
   useEffect(()=>{
-    fetch(`${API}/offices`).then(r=>r.json()).then(d=>setOffices(d.offices||[])).catch(()=>{});
-  },[]);
+    fetch(`${API}/offices`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.ok?r.json():{}).then(d=>setOffices(d.offices||[])).catch(()=>{});
+  },[token]);
 
   const submit = async () => {
     if(!subject.trim()||!message.trim()||status==="sending") return;
