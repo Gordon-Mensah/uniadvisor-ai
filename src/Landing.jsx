@@ -3,7 +3,7 @@
 // Shown as the first screen before login.
 // Changes from v1:
 //   - Added "Live Demo" nav link → /demo
-//   - Real survey stat numbers embedded (23 responses, 52%, etc)
+//   - Real survey stat numbers embedded (23 responses, 48%, etc)
 //   - Improved hero sub-headline clarity
 //   - Survey CTA button links to /survey correctly
 //   - Footer credits and dates updated
@@ -367,7 +367,7 @@ export default function Landing({ onEnter }) {
               Live · University of Dunaújváros · BSc Thesis Project 2026
             </div>
             <h1 className="l-h1">
-              Every answer.<br /><em>In English.</em><br />Instantly.
+              Every answer.<br /><em>In English.</em><br />Any time.
             </h1>
             <p className="l-hero-sub">
               International students shouldn't spend hours searching for information that{" "}
@@ -405,14 +405,14 @@ export default function Landing({ onEnter }) {
               The information exists.<br />Students just cannot find it.
             </h2>
             <p className="l-section-sub l-reveal" ref={el => revealRefs.current.push(el)}>
-              A survey of 21 international students at Dunaújváros Egyetem identified clear, systematic
+              A survey of 23 international students at Dunaújváros Egyetem identified clear, systematic
               failures in information access — with real consequences for student wellbeing and academic performance.
             </p>
             <div className="l-problem-grid l-reveal" ref={el => revealRefs.current.push(el)}>
               {[
-                { num: "52", sup: "%", label: "Language barrier as primary confusion source", desc: "Over half of respondents cited Hungarian-only forms, official letters, and Neptun messages as their biggest source of confusion on arrival." },
+                { num: "48", sup: "%", label: "Language barrier as primary confusion source", desc: "Nearly half of respondents cited Hungarian-only forms, official letters, and Neptun messages as their biggest source of confusion on arrival." },
                 { num: "43", sup: "%", label: "Could not find the right office", desc: "Students did not know which office handled which problem — and were frequently redirected between departments without resolution." },
-                { num: "38", sup: "%", label: "Banking and administrative failures", desc: '"The international office had no solution." Students resolved critical administrative problems through peer networks, not institutional support.' },
+                { num: "39", sup: "%", label: "Banking and administrative failures", desc: '"The international office had no solution." Students resolved critical administrative problems through peer networks, not institutional support.' },
               ].map((c, i) => (
                 <div className="l-problem-card" key={i}>
                   <div className="l-problem-num">{c.num}<span>{c.sup}</span></div>
@@ -446,14 +446,14 @@ export default function Landing({ onEnter }) {
             </h2>
             <p className="l-section-sub l-reveal" ref={el => revealRefs.current.push(el)}>
               Not a generic chatbot. A university-specific information engine built on BM25 retrieval over a curated
-              knowledge base of institutional documents, powered by Llama 3 via the Groq API.
+              knowledge base of institutional documents, powered by gpt-oss-20b (via Groq).
             </p>
             <div className="l-steps l-reveal" ref={el => revealRefs.current.push(el)}>
               {[
                 { num: "Step 01", title: "Student query", desc: "Any question in English or Hungarian — about Neptun, deadlines, scholarships, visas, fees, or any administrative process." },
                 { num: "Step 02", title: "Office routing", desc: "A keyword classifier detects which of ten university offices is relevant and filters the knowledge base accordingly before retrieval begins." },
                 { num: "Step 03", title: "BM25 retrieval", desc: "The top matching document chunks are retrieved in milliseconds. No embeddings, no GPU — fully deployable on free-tier infrastructure." },
-                { num: "Step 04", title: "Grounded answer", desc: "Llama 3 generates a precise, source-attributed response locked to the student's chosen language. The model cannot switch languages regardless of query content." },
+                { num: "Step 04", title: "Grounded answer", desc: "gpt-oss-20b (via Groq) generates a precise, source-attributed response locked to the student's chosen language. The model cannot switch languages regardless of query content." },
               ].map(s => (
                 <div className="l-step" key={s.num}>
                   <div className="l-step-line" />
@@ -534,7 +534,7 @@ export default function Landing({ onEnter }) {
               Their words.<br />The motivation for this project.
             </h2>
             <p className="l-section-sub l-reveal" ref={el => revealRefs.current.push(el)}>
-              Direct verbatim responses from the international student survey conducted March 2025. These accounts document
+              Direct verbatim responses from the international student survey conducted March 2026. These accounts document
               the real cost of poor information access.
             </p>
             <div className="l-quotes-grid l-reveal" ref={el => revealRefs.current.push(el)}>
@@ -570,7 +570,7 @@ export default function Landing({ onEnter }) {
                 Take the survey
               </a>
             </div>
-            <p className="l-cta-note">21 students have responded · No login required for the survey</p>
+            <p className="l-cta-note">23 students have responded · No login required for the survey</p>
           </div>
         </section>
 
@@ -586,7 +586,7 @@ export default function Landing({ onEnter }) {
               transferable to universities across Central and Eastern Europe.
             </p>
             <div className="l-tech-row l-reveal" ref={el => revealRefs.current.push(el)}>
-              {["Python 3.11","FastAPI","React 18 + Vite","Groq API","Llama 3 (8B + 70B)","BM25 retrieval","Supabase / PostgreSQL","JWT authentication","RAG pipeline","pypdf","Render (free tier)","GitHub CI"].map(t => (
+              {["Python 3.11","FastAPI","React 18 + Vite","Groq API","gpt-oss-20b (via Groq)","BM25 retrieval","Supabase / PostgreSQL","JWT authentication","RAG pipeline","pypdf","Render (free tier)","GitHub CI"].map(t => (
                 <div className="l-tech-pill" key={t}>{t}</div>
               ))}
             </div>

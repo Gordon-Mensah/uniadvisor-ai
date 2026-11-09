@@ -30,25 +30,24 @@ const PIPELINE = [
   { id: "query",    icon: "💬", label: "Student query",    sub: "English or Hungarian",          color: "#C8321A" },
   { id: "router",   icon: "🧭", label: "Office router",    sub: "10 categories",                 color: "#D4A017" },
   { id: "bm25",     icon: "🔍", label: "BM25 retrieval",   sub: "Top-k chunks",                  color: "#1B6B9A" },
-  { id: "llm",      icon: "🤖", label: "LLaMA 3 / Groq",   sub: "Context-grounded",              color: "#2A7A4A" },
+  { id: "llm",      icon: "🤖", label: "gpt-oss-20b (via Groq)", sub: "Context-grounded",              color: "#2A7A4A" },
   { id: "response", icon: "✅", label: "Sourced answer",   sub: "Language-locked",               color: "#C8321A" },
 ];
 
 const STACK = [
   { cat: "Backend",   items: ["Python 3.11", "FastAPI", "BM25 retrieval", "pypdf"] },
-  { cat: "AI / LLM",  items: ["Groq API", "LLaMA 3.3-70B", "LLaMA 3.1-8B"] },
+  { cat: "AI / LLM",  items: ["Groq API", "gpt-oss-20b (via Groq)"] },
   { cat: "Frontend",  items: ["React 18", "Vite 5", "Supabase JS"] },
   { cat: "Database",  items: ["Supabase", "PostgreSQL", "Realtime"] },
   { cat: "Deploy",    items: ["Render (free)", "GitHub CI", "Zero cost"] },
 ];
 
 const TIMELINE = [
-  { month: "Feb 2025", label: "Research start",    desc: "Literature review, problem scoping, architecture design" },
-  { month: "Mar 2025", label: "Build phase",        desc: "Web scraper, knowledge base, RAG engine, core API" },
-  { month: "Mar 2025", label: "Frontend complete",  desc: "Student, Staff, Admin portals deployed to Render" },
-  { month: "Mar 2025", label: "Survey launched",    desc: "21 international students surveyed, data collected" },
-  { month: "Apr 2025", label: "Evaluation phase",   desc: "Accuracy benchmark, SUS usability study underway" },
-  { month: "May 2025", label: "TDK Conference",     desc: "Presented at Tudományos Diákköri Konferencia" },
+  { month: "2026",     label: "Research start",    desc: "Literature review, problem scoping, architecture design" },
+  { month: "Mar 2026", label: "Build phase",        desc: "Web scraper, knowledge base, RAG engine, core API" },
+  { month: "Mar 2026", label: "Frontend complete",  desc: "Student, Staff, Admin portals deployed to Render" },
+  { month: "Mar 2026", label: "Survey launched",    desc: "23 international students surveyed, data collected" },
+  { month: "Oct 2026", label: "Evaluation phase",   desc: "Accuracy benchmark, SUS usability study underway" },
 ];
 
 // ── Reveal on scroll ───────────────────────────────────────
@@ -331,7 +330,7 @@ export default function Demo() {
           A full AI platform.
         </h1>
         <p style={{ fontSize:17,color:"rgba(255,255,255,0.45)",maxWidth:520,margin:"0 auto 36px",lineHeight:1.75,animation:"dmFadeUp 0.5s 0.2s ease both" }}>
-          Built as a BSc thesis project at the University of Dunaújváros — a production-grade, deployed system serving real international students. Every line of code written by one BSc student.
+          Built as a BSc thesis project at the University of Dunaújváros — a production-grade, deployed system serving real international students. Designed and built by one BSc student.
         </p>
         <div className="dm-btn-group" style={{ display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap",animation:"dmFadeUp 0.5s 0.3s ease both" }}>
           <a href="/login" className="dm-btn">Try it live →</a>
@@ -519,7 +518,7 @@ export default function Demo() {
                 This project addresses a real, documented problem — international students at UoD losing time, missing deadlines, and navigating critical administrative processes alone because institutional information is inaccessible.
               </p>
               <p style={{ fontSize:15,color:"rgba(255,255,255,0.55)",lineHeight:1.8,marginBottom:28 }}>
-                UniAdvisor AI was built to solve that problem completely — not as a proof of concept, but as a production system that works today, is deployed publicly, and has already collected primary research data from 21 enrolled students.
+                UniAdvisor AI was built to solve that problem completely — not as a proof of concept, but as a production system that works today, is deployed publicly, and has already collected primary research data from 23 enrolled students.
               </p>
               <div className="dm-btn-group" style={{ display:"flex",gap:10,flexWrap:"wrap" }}>
                 <a href="/login" className="dm-btn">Open the system →</a>
