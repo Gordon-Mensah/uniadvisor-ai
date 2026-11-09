@@ -531,7 +531,7 @@ async def upload_document(file: UploadFile = File(...), office: str = "general",
 
 
 @app.get("/documents")
-def documents():
+def documents(session = Depends(require_admin)):
     """One row per stored document (from Supabase when connected): name, office, chunks, uploaded_at."""
     try:
         return {"documents": list_documents()}
@@ -559,11 +559,11 @@ def _days_since(iso):
     return (now - when).days
 
 @app.get("/stats")
-def stats():
+def stats(session = Depends(require_admin)):
     return get_stats()
 
 @app.get("/expiry-alerts")
-def get_expiry_alerts():
+def get_expiry_alerts(session = Depends(require_admin)):
     alerts = []
     try:
         docs = list_documents()
@@ -873,7 +873,7 @@ def debug_search(q: str, office: str = "auto", session = Depends(require_admin))
 # ═══════════════════════════════════════════════════════════════
 
 @app.get("/office-analytics")
-def office_analytics():
+def office_analytics(session = Depends(require_admin)):
     """Per-office: question count, up/down ratings, satisfaction %"""
     if not SUPABASE_AVAILABLE:
         return {"offices": [], "message": "Supabase not connected"}
@@ -1155,7 +1155,7 @@ def get_audit_log(limit: int = 50, session = Depends(require_admin)):
 # ═══════════════════════════════════════════════════════════════
 
 @app.get("/faq")
-def get_faq():
+def get_faq(session = Depends(require_admin)):
     stats_data = get_stats()
     questions  = stats_data.get("all_questions", [])
     topics     = {}
@@ -1181,7 +1181,7 @@ def get_faq():
     return {"faq": faq}
 
 @app.post("/translate")
-async def translate_document(file: UploadFile = File(...), target_language: str = "en"):
+async def translate_document(file: UploadFile = File(...), target_language: str = "en", session = Depends(require_admin)):
     if not file.filename.endswith((".txt",".pdf",".docx")):
         raise HTTPException(status_code=400, detail="Only TXT, PDF, DOCX supported.")
     try:
@@ -1203,7 +1203,7 @@ async def translate_document(file: UploadFile = File(...), target_language: str 
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/offices")
-def get_offices():
+def get_offices(session = Depends(get_current_user)):   # student escalation form, staff + admin portals
     try:
         items = []
         docs = list_documents()
@@ -1215,7 +1215,7 @@ def get_offices():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/offices/{office_id}/documents")
-def office_documents(office_id: str):
+def office_documents(office_id: str, session = Depends(require_admin)):
     try:
         docs = [d for d in list_documents() if d.get("office") == office_id]
         return {"documents": docs, "office_id": office_id}

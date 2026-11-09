@@ -17,3 +17,24 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+# Runtime data (uploaded documents and the local chunk cache)
+uploaded_docs/
+
+# Evaluation outputs (regenerate with evaluation/run_all.py)
+evaluation/results/
+
+# Caches and tool output
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+*.log
+.vite/
+
+# Duplicates removed for submission (scraped_images/ is the one copy)
+scraped_images.zip
+scraped_images - Copy/
+
+# Editors
+.vscode/
+.idea/

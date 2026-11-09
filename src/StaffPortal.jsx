@@ -141,7 +141,7 @@ export default function StaffPortal({ user, token, onLogout }) {
     loadStudents();
     loadMessages();
     loadEscalations();
-    fetch(`${API}/offices`).then(r=>r.json()).then(d=>setOfficeNames(Object.fromEntries((d.offices||[]).map(o=>[o.id,`${o.emoji} ${o.name}`])))).catch(()=>{});
+    fetch(`${API}/offices`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.ok?r.json():{}).then(d=>setOfficeNames(Object.fromEntries((d.offices||[]).map(o=>[o.id,`${o.emoji} ${o.name}`])))).catch(()=>{});
   }, []);
 
   // ── Escalations for this staff member's office ─────────────

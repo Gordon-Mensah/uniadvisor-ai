@@ -47,7 +47,7 @@ const TIMELINE = [
   { month: "Mar 2026", label: "Build phase",        desc: "Web scraper, knowledge base, RAG engine, core API" },
   { month: "Mar 2026", label: "Frontend complete",  desc: "Student, Staff, Admin portals deployed to Render" },
   { month: "Mar 2026", label: "Survey launched",    desc: "23 international students surveyed, data collected" },
-  { month: "Oct 2026", label: "Evaluation phase",   desc: "Accuracy benchmark, SUS usability study underway" },
+  { month: "Oct 2026", label: "Evaluation phase",   desc: "60-question RAG accuracy benchmark" },
 ];
 
 // ── Reveal on scroll ───────────────────────────────────────

@@ -237,9 +237,11 @@ export default function AdminPortal({ user, token, onLogout }) {
     setTranslating(true); setTransResult(null);
     const form = new FormData(); form.append("file", transFile); form.append("target_language", transLang);
     try {
-      const res = await fetch(`${API}/translate?target_language=${transLang}`, { method: "POST", body: form });
-      setTransResult(await res.json());
-    } catch { setTransResult({ error: "Translation failed." }); }
+      const res = await fetch(`${API}/translate?target_language=${transLang}`, { method: "POST", headers: auth, body: form });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+      setTransResult(data);
+    } catch (e) { setTransResult({ error: `Translation failed: ${e.message}` }); }
     setTranslating(false);
   };
 

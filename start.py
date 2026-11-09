@@ -50,16 +50,16 @@ signal.signal(signal.SIGTERM, shutdown)
 def check_requirements():
     """Check that required files exist."""
     missing = []
-    for f in ["main.py", "rag.py", "ingest.py", "package.json"]:
+    for f in ["main.py", "rag.py", "package.json"]:
         if not os.path.exists(f):
             missing.append(f)
     if missing:
         print(f"{RED}❌ Missing files: {', '.join(missing)}{RESET}")
-        print(f"{YELLOW}Make sure you're running this from E:\\school project\\{RESET}")
+        print(f"{YELLOW}Run this from the repository root (the folder with main.py){RESET}")
         sys.exit(1)
 
     if not os.path.exists(".env"):
-        print(f"{YELLOW}⚠️  No .env file found. Create one with your GROQ_API_KEY_1{RESET}")
+        print(f"{YELLOW}⚠️  No .env file found. Copy .env.example to .env and fill it in{RESET}")
 
 def main():
     check_requirements()
