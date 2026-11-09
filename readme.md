@@ -233,8 +233,8 @@ Questions are automatically routed to 10 university departments:
 #### 3. BM25 Search Algorithm
 - **No Embeddings Required**: Uses term frequency analysis
 - **Hungarian Support**: Handles accented characters and local terminology
-- **Office Filtering**: Searches within relevant department documents first
-- **Fallback Strategy**: Expands to general documents if no matches found
+- **Office Preference**: Always searches the whole knowledge base; chunks filed under the detected office get a small score boost (×1.1), so a wrong routing decision cannot hide the right passage
+- **Office-Name Glossary**: In `translate` mode, Hungarian office names are translated to the names used on the English website (e.g. Tanulmányi Osztály → Study Office)
 
 #### 4. Language Management
 - **Input Detection**: Accepts queries in English or Hungarian

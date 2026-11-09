@@ -844,27 +844,26 @@ def debug_indexed_documents(session = Depends(require_admin)):
 
 @app.get("/debug/search")
 def debug_search(q: str, office: str = "auto", session = Depends(require_admin)):
-    """Test BM25 search directly (for debugging)."""
-    from rag import _bm25_search, detect_office
-    
+    """Test BM25 search directly (for debugging). Searches the raw query, without translation."""
+    from rag import _bm25_ranked, detect_office
+
     if office == "auto":
         office = detect_office(q)
-    
-    results = _bm25_search(q, office=office, k=3)
-    if not results and office != "general":
-        results = _bm25_search(q, office=None, k=3)
-    
+
+    ranked = _bm25_ranked(q, office=office)[:3]
+
     return {
         "query": q,
         "detected_office": office,
-        "results_found": len(results),
+        "results_found": len(ranked),
         "results": [
             {
+                "score": round(score, 3),
                 "source": r["source"],
                 "office": r["office"],
                 "preview": r["text"][:150] + "..."
             }
-            for r in results
+            for score, r in ranked
         ]
     }
 
