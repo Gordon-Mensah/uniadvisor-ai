@@ -3,7 +3,7 @@
 // Shown as the first screen before login.
 // Changes from v1:
 //   - Added "Live Demo" nav link → /demo
-//   - Real survey stat numbers embedded (21 responses, 52%, etc)
+//   - Real survey stat numbers embedded (23 responses, 52%, etc)
 //   - Improved hero sub-headline clarity
 //   - Survey CTA button links to /survey correctly
 //   - Footer credits and dates updated
@@ -364,7 +364,7 @@ export default function Landing({ onEnter }) {
           <div className="l-hero-content">
             <div className="l-eyebrow">
               <span className="l-eyebrow-dot" />
-              Live · Dunaújváros Egyetem · TDK Conference May 2025
+              Live · University of Dunaújváros · BSc Thesis Project 2026
             </div>
             <h1 className="l-h1">
               Every answer.<br /><em>In English.</em><br />Instantly.
@@ -372,7 +372,7 @@ export default function Landing({ onEnter }) {
             <p className="l-hero-sub">
               International students shouldn't spend hours searching for information that{" "}
               <strong>exists but is buried, untranslated, and hard to find.</strong>{" "}
-              UniAdvisor AI is a 24/7 AI advisor that knows every procedure, deadline, and office at UoD.
+              UniAdvisor is a 24/7 AI advisor that answers from the university's official information and tells you which office to contact.
             </p>
             <div className="l-hero-actions">
               <button className="l-btn-primary" onClick={onEnter}>Open the app →</button>
@@ -383,9 +383,9 @@ export default function Landing({ onEnter }) {
             </div>
             <div className="l-hero-stats">
               {[
-                { num: "21", sup: "+", label: "Students surveyed" },
-                { num: "<2", sup: "s",  label: "Response time" },
-                { num: "10", sup: "+",  label: "Offices covered" },
+                { num: "23", sup: "",   label: "Students surveyed" },
+                { num: "EN\u00a0/\u00a0HU", sup: "", label: "Languages" },
+                { num: "10", sup: "",   label: "Offices covered" },
                 { num: "24", sup: "/7", label: "Always available" },
               ].map(s => (
                 <div className="l-stat" key={s.label}>
@@ -496,7 +496,7 @@ export default function Landing({ onEnter }) {
                 <div className="l-feature-desc">Real-time visibility into student information needs, satisfaction scores, escalation management, and the document knowledge base.</div>
                 <ul className="l-feature-list">
                   <li>Per-office question volume and ratings</li>
-                  <li>Survey results and TDK research data</li>
+                  <li>Survey results and thesis research data</li>
                   <li>Document upload and KB management</li>
                   <li>Full audit log of all staff actions</li>
                 </ul>
@@ -596,9 +596,8 @@ export default function Landing({ onEnter }) {
         {/* FOOTER */}
         <footer className="l-footer">
           <div className="l-footer-divider" />
-          <p><strong>UniAdvisor AI</strong> · BSc Computer Science Engineering · TDK Research Project 2025</p>
+          <p><strong>UniAdvisor AI</strong> · BSc Computer Science Engineering · BSc Thesis Project 2026</p>
           <p style={{ marginTop:6 }}><strong>Dunaújváros Egyetem</strong> · Student: <strong>John Jerry Gordon-Mensah</strong> · Supervisor: <strong>Dr. Váraljai Mariann</strong></p>
-          <p style={{ marginTop:6 }}>TDK Conference: <strong>May 13, 2025</strong> · Registration deadline: <strong>April 24, 2025</strong></p>
           <p style={{ marginTop:16 }}>
             <button onClick={onEnter} style={{ background:"none",border:"none",color:"rgba(255,255,255,0.45)",cursor:"pointer",fontSize:12,fontFamily:"'Inter',sans-serif" }}>Open app</button>
             {" · "}

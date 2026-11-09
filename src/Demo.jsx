@@ -176,7 +176,7 @@ function LiveDemo() {
         ))}
         <div style={{ marginTop:16,padding:14,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10 }}>
           <div style={{ fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.3)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10 }}>System info</div>
-          {[["Response time","< 2 seconds"],["Knowledge base","60+ UoD pages"],["Office routing","10 categories"],["Languages","English · Hungarian"],["Cost","€0 / month"]].map(([k,v])=>(
+          {[["Retrieval","BM25 · top-3 chunks"],["Knowledge base","195 UoD pages + 60 PDFs"],["Office routing","10 categories"],["Languages","English · Hungarian"],["Cost","€0 / month"]].map(([k,v])=>(
             <div key={k} style={{ display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:12 }}>
               <span style={{ color:"rgba(255,255,255,0.4)" }}>{k}</span>
               <span style={{ color:"#D4A017",fontWeight:600 }}>{v}</span>
@@ -331,7 +331,7 @@ export default function Demo() {
           A full AI platform.
         </h1>
         <p style={{ fontSize:17,color:"rgba(255,255,255,0.45)",maxWidth:520,margin:"0 auto 36px",lineHeight:1.75,animation:"dmFadeUp 0.5s 0.2s ease both" }}>
-          Built as a TDK research project at Dunaújváros Egyetem — a production-grade, deployed system serving real international students. Every line of code written by one BSc student.
+          Built as a BSc thesis project at the University of Dunaújváros — a production-grade, deployed system serving real international students. Every line of code written by one BSc student.
         </p>
         <div className="dm-btn-group" style={{ display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap",animation:"dmFadeUp 0.5s 0.3s ease both" }}>
           <a href="/login" className="dm-btn">Try it live →</a>
@@ -343,7 +343,7 @@ export default function Demo() {
           {[
             {n:"3",s:"portals",d:"Student · Staff · Admin"},
             {n:"10",s:"offices mapped",d:"Auto-routed by classifier"},
-            {n:"60+",s:"pages scraped",d:"Live UoD knowledge base"},
+            {n:"195",s:"pages crawled",d:"Plus 60 PDFs from uniduna.hu"},
             {n:"€0",s:"monthly cost",d:"All free-tier infrastructure"},
           ].map(({n,s,d})=>(
             <div key={s} style={{ padding:"24px 16px",background:"rgba(7,16,31,0.8)",textAlign:"center" }}>
@@ -410,7 +410,7 @@ export default function Demo() {
             {[
               { role:"Student",icon:"🎓",color:"#1B6B9A",features:["AI advisor in English and Hungarian","10 office categories auto-detected","Progress task tracker","Campus events calendar","Interactive campus map with GPS","Advisor escalation and reply inbox","Onboarding tour on first login"] },
               { role:"Staff",  icon:"👩‍🏫",color:"#2A7A4A",features:["Publish announcements with scheduling","Live student activity feed","Student directory with filters","Direct messaging to students","Read receipt tracking","Supabase-persisted — survives reload"] },
-              { role:"Admin",  icon:"⚙️", color:"#C8321A",features:["KPI dashboard with animated counters","Per-office analytics and satisfaction","Survey results with TDK data","Escalation inbox with reply tool","Full audit log of all actions","Document upload and KB management","Campus events CRUD"] },
+              { role:"Admin",  icon:"⚙️", color:"#C8321A",features:["KPI dashboard with animated counters","Per-office analytics and satisfaction","Survey results with thesis data","Escalation inbox with reply tool","Full audit log of all actions","Document upload and KB management","Campus events CRUD"] },
             ].map((p,i)=>(
               <Reveal key={i} delay={i*0.08}>
                 <div className="dm-portal-card">
@@ -504,7 +504,7 @@ export default function Demo() {
                 </div>
               </div>
               <div style={{ borderTop:"1px solid rgba(255,255,255,0.06)",paddingTop:16 }}>
-                {[["Supervisor","Dr. Váraljai Mariann"],["Conference","TDK · May 13, 2025"],["Programme","BSc Computer Science"],["Status","Active development"]].map(([k,v])=>(
+                {[["Supervisor","Dr. Váraljai Mariann"],["Project","BSc Thesis · 2026"],["Programme","BSc Computer Science"],["Status","Active development"]].map(([k,v])=>(
                   <div key={k} style={{ display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:13 }}>
                     <span style={{ color:"rgba(255,255,255,0.35)" }}>{k}</span>
                     <span style={{ color:"rgba(255,255,255,0.75)",fontWeight:500 }}>{v}</span>
@@ -533,7 +533,7 @@ export default function Demo() {
       {/* ── FOOTER ── */}
       <footer style={{ borderTop:"1px solid rgba(255,255,255,0.05)",padding:"28px 48px",textAlign:"center",fontSize:12,color:"rgba(255,255,255,0.2)" }}>
         <div style={{ width:32,height:2,background:"#C8321A",margin:"0 auto 14px",borderRadius:2 }} />
-        <div>UniAdvisor AI · TDK Research Project · Dunaújváros Egyetem · 2025</div>
+        <div>UniAdvisor AI · BSc Thesis Project · University of Dunaújváros · 2026</div>
         <div style={{ marginTop:5 }}>
           John Jerry Gordon-Mensah · Dr. Váraljai Mariann ·{" "}
           <a href="/" style={{ color:"#C8321A",textDecoration:"none" }}>Home</a> ·{" "}
