@@ -123,6 +123,19 @@ def _content_tokens(doc):
 
 _translation_cache = {}
 
+# Official English names used on the university's English website (and so in the
+# knowledge base). Without them the LLM picks its own wording, e.g. "Tanulmányi Osztály"
+# -> "Academic Department", and BM25 misses the pages that say "Study Office".
+TRANSLATION_GLOSSARY = {
+    "Tanulmányi Osztály": "Study Office",
+    "Nemzetközi Kapcsolatok Irodája / Nemzetközi Iroda": "International Relations Office",
+    "Hallgatói Önkormányzat (HÖK)": "Student Union",
+    "Kollégium": "Dormitory",
+    "Könyvtár": "Library",
+}
+_GLOSSARY_TEXT = "; ".join(f"{hu} = {en}" for hu, en in TRANSLATION_GLOSSARY.items())
+
+
 def _translate_query(question):
     """Translate a Hungarian question to English for retrieval (V2)."""
     if question in _translation_cache:
@@ -130,6 +143,8 @@ def _translate_query(question):
     r = get_groq_rotator().chat(
         messages=[
             {"role": "system", "content": "Translate the user's Hungarian question into English. "
+                                          "Use these official English names of university offices "
+                                          f"(in any grammatical form): {_GLOSSARY_TEXT}. "
                                           "Output only the English translation, nothing else."},
             {"role": "user", "content": question},
         ],
@@ -335,7 +350,18 @@ def load_docs_from_disk():
 
 # ── BM25 search ───────────────────────────────────────────
 
-def _bm25_search(query, office=None, k=3, mode=None):
+# Chunks filed under the detected office get their BM25 score multiplied by this.
+# The whole knowledge base is always searched: the office is only a preference,
+# so a routing decision can never hide the passage that answers the question.
+OFFICE_BOOST = 1.1
+
+
+def _bm25_ranked(query, office=None, mode=None):
+    """All chunks with a positive score, best first, as (score, chunk) pairs.
+
+    BM25 runs over the whole knowledge base (one IDF for every chunk). When an
+    office other than "general" is given, its chunks get OFFICE_BOOST.
+    """
     mode = mode or retrieval_mode()
     if mode == "baseline":
         doc_tokens = lambda d: d["tokens"]
@@ -344,13 +370,12 @@ def _bm25_search(query, office=None, k=3, mode=None):
         doc_tokens = _content_tokens
         qtoks = [t for t in _tokenize(query) if t not in STOPWORDS]
     with _doc_lock:
-        pool = [d for d in _doc_chunks if office is None or d["office"]==office or office=="general"]
-        if not pool:
-            pool = list(_doc_chunks)
+        pool = list(_doc_chunks)
     if not pool:
         return []
-    if not qtoks:
-        return pool[:k]
+    if not qtoks:   # only stopwords: unchanged behaviour, the first chunks with score 0
+        return [(0.0, d) for d in pool]
+    prefer = office if office and office != "general" else None
     k1, b = 1.5, 0.75
     N = len(pool)
     avgdl = sum(len(doc_tokens(d)) for d in pool) / N
@@ -365,9 +390,16 @@ def _bm25_search(query, office=None, k=3, mode=None):
         for t in doc_tokens(doc): tf_map[t] += 1
         score = sum(idf.get(t,0)*tf_map[t]*(k1+1)/(tf_map[t]+k1*(1-b+b*dl/avgdl)) for t in qtoks if tf_map[t]>0)
         if score > 0:
+            if prefer and doc["office"] == prefer:
+                score *= OFFICE_BOOST
             scores.append((score, i))
-    scores.sort(reverse=True)
-    return [pool[i] for _,i in scores[:k]]
+    scores.sort(reverse=True)   # same order as before, ties: later chunk first
+    return [(s, pool[i]) for s, i in scores]
+
+
+def _bm25_search(query, office=None, k=3, mode=None):
+    """Top-k chunks over the whole knowledge base, preferring the given office."""
+    return [d for _, d in _bm25_ranked(query, office=office, mode=mode)[:k]]
 
 
 # ── Office detection ──────────────────────────────────────
@@ -442,15 +474,15 @@ def get_answer(question, student_name="Student", student_year="Year 1",
         except Exception as e:
             print(f"[UniAdvisor] Query translation failed, searching with the original: {e}")
 
-    # BM25 search
+    # BM25 over the whole knowledge base; the detected office only gets a small boost
     docs = _bm25_search(search_query, office=office, k=3, mode=mode)
-    if not docs and office != "general":
-        docs = _bm25_search(search_query, office=None, k=3, mode=mode)
 
     context = "\n\n".join(d["text"] for d in docs)
-    
+
     # DEBUG: Log search performance
-    print(f"[UniAdvisor] Q='{question[:50]}...' Office={office} Found={len(docs)} docs Context_len={len(context)}")
+    print(f"[UniAdvisor] Q='{question[:50]}...' Office={office} Search='{search_query[:60]}' "
+          f"Found={len(docs)} docs Context_len={len(context)} "
+          f"Top={[(d['office'], d['source']) for d in docs]}")
 
     # Sources
     seen, sources = set(), []
