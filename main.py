@@ -1182,7 +1182,7 @@ def get_faq():
     return {"faq": faq}
 
 @app.post("/translate")
-async def translate_document(file: UploadFile = File(...), target_language: str = "en"):
+async def translate_document(file: UploadFile = File(...), target_language: str = "en", session = Depends(require_admin)):
     if not file.filename.endswith((".txt",".pdf",".docx")):
         raise HTTPException(status_code=400, detail="Only TXT, PDF, DOCX supported.")
     try:
