@@ -34,11 +34,11 @@
 ### Key Capabilities
 
 - **Intelligent Q&A**: Answers questions about courses, admissions, policies, and campus services
-- **Multi-language Support**: Handles both English and Hungarian queries with language-locked responses
+- **Multi-language Support**: Handles English and Hungarian questions; answers in the language chosen with the in-app toggle
 - **Document-Driven Responses**: All answers grounded in official university materials
 - **Office Routing**: Automatically directs questions to relevant university departments
 - **Multi-Role Access**: Separate interfaces for students, staff, and administrators
-- **Real-time Analytics**: Comprehensive usage tracking and performance metrics
+- **Usage Analytics**: Question counts by office, answer ratings, escalations and survey results in the admin portal
 
 ### Target Users
 
@@ -57,7 +57,7 @@
 | **API Framework** | FastAPI (Python 3.11.9) | RESTful API with automatic OpenAPI docs |
 | **Authentication** | JWT + bcrypt | Secure session management |
 | **Database** | Supabase (PostgreSQL) | Persistent data storage with real-time capabilities |
-| **AI Engine** | Groq API (LLaMA 3.3-70B/3.1-8B) | Large language model for response generation |
+| **AI Engine** | gpt-oss-20b (via Groq) | Large language model for response generation (`GROQ_MODEL`) |
 | **Search Algorithm** | Custom BM25 | Document retrieval without embeddings |
 | **Document Processing** | pypdf, python-docx | Text extraction from university materials |
 
@@ -69,7 +69,6 @@
 | **State Management** | React Hooks | Component-level state management |
 | **Styling** | Inline CSS + Themes | Responsive design with dark/light modes |
 | **Real-time** | Supabase JS | Live data synchronization |
-| **Routing** | React Router | Client-side navigation |
 
 ### AI Pipeline
 
@@ -81,10 +80,10 @@ Student Query → Office Detection → BM25 Search → Context Retrieval → LLM
 
 | Component | Technology | Purpose |
 |-----------|------------|---------|
-| **Hosting** | Render | Free tier web service hosting |
-| **CI/CD** | GitHub Actions | Automated testing and deployment |
-| **Environment** | Docker-like | Isolated Python environment |
-| **Monitoring** | Built-in Analytics | Usage tracking and error logging |
+| **Hosting** | Render | Free tier web service hosting, defined in `render.yaml` |
+| **Deployment** | Render auto-deploy | Render builds (`build.sh`) and deploys automatically from the `main` branch; there is no separate CI pipeline |
+| **Environment** | Render native Python runtime | Python 3.11.9, started with `uvicorn main:app` |
+| **Monitoring** | Render logs + admin dashboard | Server logs on Render; question counts and ratings in the admin portal |
 
 ---
 
@@ -116,9 +115,8 @@ venv\Scripts\activate  # Windows
 # Install dependencies
 pip install -r requirements.txt
 
-# Configure environment
-cp .env.example .env
-# Edit .env with your API keys and database URLs
+# Configure environment: create a .env file with the backend variables
+# listed under "Environment Variables" below (there is no .env.example)
 ```
 
 ### 3. Frontend Setup
@@ -127,9 +125,8 @@ cp .env.example .env
 # Install Node dependencies
 npm install
 
-# Configure environment
-cp .env.example .env
-# Edit .env with API URL and Supabase credentials
+# Configure environment: create a .env file with the frontend variables
+# listed under "Environment Variables" below
 ```
 
 ### 4. Database Setup
@@ -191,9 +188,18 @@ CREATE TABLE survey_responses (id SERIAL PRIMARY KEY, responses JSONB, submitted
 ### 5. Run the Application
 
 ```bash
-# Terminal 1: Backend
-python main.py
+# Both at once (backend on :8000, frontend on :3000)
+python start.py
+```
 
+or separately:
+
+```bash
+# Terminal 1: Backend
+uvicorn main:app --reload --port 8000
+```
+
+```bash
 # Terminal 2: Frontend
 npm run dev
 ```
@@ -237,19 +243,20 @@ Questions are automatically routed to 10 university departments:
 - **Fallback Strategy**: Expands to general documents if no matches found
 
 #### 4. Language Management
-- **Input Detection**: Accepts queries in English or Hungarian
-- **Response Locking**: Answers strictly in the query language
-- **No Translation**: Prevents language mixing in responses
+- **Input**: Accepts questions in English or Hungarian
+- **Response Locking**: Answers in the language selected with the in-app toggle (`reply_lang`), whatever language the question is in
+- **Search Translation**: With `RETRIEVAL_MODE=translate` (production), Hungarian questions are translated to English for the search only; the answer stays in the selected language
 
 #### 5. LLM Integration
-- **Primary Model**: LLaMA 3.3-70B Versatile via Groq API
-- **Fallback Model**: LLaMA 3.1-8B Instant
-- **Context Window**: Optimized prompts with retrieved chunks
+- **Model**: gpt-oss-20b via Groq API (`GROQ_MODEL`, default `openai/gpt-oss-20b`), `reasoning_effort=low`
+- **Fallback Models**: none by default; optional list in `GROQ_FALLBACK_MODELS`, tried when a key is rate-limited
+- **Key Rotation**: several Groq keys (`GROQ_API_KEY_1`, `_2`, ...) are rotated on rate limits
+- **Context**: the top 3 retrieved chunks and the last 4 chat messages
 - **Temperature**: 0.1 for consistent, factual responses
 
 ### Response Generation Process
 
-1. **Query Analysis**: Extract keywords and detect language
+1. **Query Analysis**: Extract keywords (and, in `translate` mode, translate Hungarian questions for the search)
 2. **Office Routing**: Classify question by department
 3. **Document Retrieval**: Find top 3 most relevant chunks
 4. **Context Assembly**: Combine chunks into coherent context
@@ -286,25 +293,24 @@ Questions are automatically routed to 10 university departments:
 - **Student Support**: Direct communication with students
 
 #### Communication Features
-- **Rich Text Announcements**: Formatted messages with scheduling
-- **Priority Levels**: Info, warning, critical classifications
-- **Targeted Messaging**: Department-specific or university-wide scope
+- **Announcements**: Plain-text messages, optionally scheduled
+- **Priority Levels**: Info, warning, urgent
+- **Staff Messages**: To one student (by email) or to a group
 
 ### Admin Portal
 
 #### System Management
-- **Document Upload**: Drag-and-drop interface for university materials
-- **User Management**: View/edit user accounts and permissions
-- **Advanced Analytics**: Detailed usage statistics and performance metrics
-- **FAQ Management**: Create/edit/delete frequently asked questions
+- **Document Upload**: Upload, replace and delete university documents (PDF, DOCX, TXT)
+- **Office Analytics**: Questions per office
+- **Satisfaction**: Thumbs-up/down ratings of answers
+- **FAQ**: Most-asked question topics, grouped automatically from the questions asked
 - **Event Management**: Schedule and manage campus events
-- **Survey Management**: Create and analyze student feedback surveys
+- **Survey Results**: Responses to the international student survey
+- **Audit Log**: Document uploads/deletes and escalation replies
 
-#### Monitoring Dashboard
-- **Real-time Metrics**: Active users, question volume, response times
+#### Dashboard
+- **Total Questions**, **Indexed Chunks**, **Cached Answers** and **Satisfaction** tiles
 - **Office Analytics**: Question distribution by department
-- **Performance Tracking**: System uptime and error rates
-- **Usage Patterns**: Peak hours, popular topics, user demographics
 
 ---
 
@@ -318,7 +324,7 @@ Questions are automatically routed to 10 university departments:
 - **TXT Files**: Plain text documents and simple lists
 
 #### Processing Pipeline
-1. **File Validation**: Check format and size limits
+1. **File Validation**: Accept only .pdf, .docx and .txt files
 2. **Text Extraction**: Convert to plain text using specialized parsers
 3. **Content Chunking**: Split into 400-word segments with overlap
 4. **Office Classification**: Tag chunks by relevant department
@@ -340,11 +346,9 @@ OFFICES = {
 ```
 
 #### Knowledge Base Sources
-- **University Website**: Complete content from uniduna.hu
-- **Academic Catalogs**: Course descriptions and requirements
-- **Policy Documents**: Academic regulations and procedures
-- **Contact Information**: Staff directories and office details
-- **Event Calendars**: University activities and deadlines
+- **University Website**: `university_knowledge.txt`, crawled from the public English pages of uniduna.hu (195 pages and 60 linked PDFs; see Data Collection Ethics)
+- **Contact Information**: `university_contacts.txt`, office contacts
+- **Uploaded Documents**: PDF, DOCX and TXT files uploaded by admins
 
 ---
 
@@ -495,8 +499,8 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 
 #### Backend Development
 ```bash
-# Install development dependencies
-pip install -r requirements-dev.txt
+# Install dependencies
+pip install -r requirements.txt
 
 # Run with auto-reload
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
@@ -517,72 +521,70 @@ npm run dev
 npm run build
 ```
 
-### Testing Setup
+### Checking Changes
 
-#### Unit Tests
+There is no unit-test suite. Changes are checked with the frontend build and the evaluation scripts in `evaluation/` (see [Evaluation](#evaluation)).
+
+#### Frontend
 ```bash
-# Backend tests
-pytest tests/
-
-# Frontend tests
-npm test
+npm run build
 ```
 
-#### Integration Tests
+#### Evaluation (from the repository root)
 ```bash
-# End-to-end testing
-npm run test:e2e
+# Check questions.json against the knowledge base (no API calls)
+python evaluation/evaluate.py --validate
 ```
 
-### Code Quality
-
-#### Linting and Formatting
 ```bash
-# Backend
-black . --check
-flake8 .
-mypy .
-
-# Frontend
-npm run lint
-npm run format
+# Retrieval metrics for the three retrieval variants (no API calls)
+python evaluation/run_all.py --retrieval-only
 ```
+
+```bash
+# Full run: 3 retrieval variants on gpt-oss-20b, then the best one on gpt-oss-120b (needs Groq keys)
+python evaluation/run_all.py
+```
+
+```bash
+# Prompt experiment: default vs strict prompt (needs Groq keys)
+python evaluation/run_all.py --prompt-experiment
+```
+
+```bash
+# Single configuration
+python evaluation/evaluate.py --retrieval translate --prompt default --model openai/gpt-oss-20b
+```
+
+```bash
+# Manual check: review sheet, then agreement with the automatic scores
+python evaluation/make_review_sheet.py evaluation/results/results_<run>.csv --blind
+```
+
+```bash
+python evaluation/agreement.py evaluation/results/results_<run>.csv
+```
+
+Results are written to `evaluation/results/`.
 
 ---
 
 ## 📊 Analytics & Monitoring
 
-### Real-time Metrics
+### Usage Statistics (`GET /stats`)
 
-#### System Analytics
-- **Total Questions**: Cumulative query count
-- **Active Users**: Current session tracking
-- **Response Times**: Average and percentile performance
-- **Cache Hit Rate**: Answer caching effectiveness
+Kept in memory since the last server restart:
+- **Total Questions** and the most recent questions
+- **Questions by Office**, **Major** and **Year**
+- **Indexed Chunks** and **Cached Answers**
 
-#### User Analytics
-- **Questions by Major**: Distribution across study programs
-- **Questions by Year**: Usage by academic level
-- **Questions by Office**: Department routing effectiveness
-- **Questions by Nationality**: International vs domestic usage
+### Other Admin Views
+- **Office Analytics** (`GET /office-analytics`): questions per office
+- **Satisfaction** (`GET /feedback`): answer ratings
+- **Escalations**: questions passed to human staff
 
-#### Office Analytics
-- **Routing Accuracy**: Correct department classification
-- **Response Quality**: User feedback ratings
-- **Escalation Rate**: Questions requiring human intervention
-
-### Monitoring Dashboard
-
-#### Admin Interface Features
-- **Live Charts**: Real-time usage graphs
-- **Performance Metrics**: System health indicators
-- **Error Tracking**: Failed requests and exceptions
-- **Usage Patterns**: Peak hours and popular topics
-
-#### Audit Logging
-- **Security Events**: Authentication and authorization
-- **Admin Actions**: Content management and user administration
-- **System Changes**: Configuration and deployment updates
+### Audit Log
+- **Recorded Actions**: Document upload, document delete and escalation replies (who, what, when)
 
 ---
 
@@ -715,24 +717,21 @@ the production setting.
 
 #### JWT Implementation
 - **Token Expiration**: 7-day session validity
-- **Secure Storage**: HTTP-only cookies with CSRF protection
-- **Refresh Mechanism**: Automatic token renewal
+- **Transport**: Bearer token in the `Authorization` header; the frontend keeps it in `sessionStorage`
+- **Revocation**: Logout marks the token as revoked
 
 #### Password Security
 - **bcrypt Hashing**: Industry-standard password protection
-- **Salt Rounds**: Configurable complexity (default: 12)
-- **Fallback Prevention**: Graceful degradation without security compromise
+- **Cost Factor**: 12 rounds
 
 ### Data Protection
 
 #### Privacy Measures
-- **Data Minimization**: Only collect necessary user information
-- **Consent Management**: Clear privacy policy and data usage
-- **Audit Logging**: Comprehensive activity tracking
+- **Anonymous Chat Logs**: Student name and nationality are no longer stored with chat logs
+- **Audit Logging**: Document uploads/deletes and escalation replies are recorded
 
 #### Access Control
 - **Role-Based Permissions**: Student/Staff/Admin access levels
-- **API Rate Limiting**: Prevent abuse and ensure fair usage
 - **Session Management**: Secure logout and token invalidation
 
 ---
@@ -742,25 +741,24 @@ the production setting.
 ### Caching Strategy
 
 #### Answer Caching
-- **Cache Key**: Hash of question + context parameters
-- **Cache Size**: 200 entries with LRU eviction
-- **Hit Rate**: > 80% for common questions
+- **Cache Key**: Question + profile, office, language, retrieval mode and prompt mode
+- **Cache Size**: 200 entries in memory; the oldest entry is evicted first
+- **Scope**: Only questions without chat history are cached
 
 #### Database Optimization
-- **Indexing**: Optimized queries on frequently accessed columns
-- **Connection Pooling**: Efficient database connection management
-- **Query Optimization**: Minimized database round trips
+- **Indexing**: Indexes on `document_chunks.source` and `document_chunks.office`
+- **Batched Inserts**: Document chunks are inserted in batches
 
 ### AI Pipeline Optimization
 
 #### BM25 Tuning
 - **Chunk Size**: 400 words with 80-word overlap
 - **Term Processing**: Hungarian language support
-- **Scoring Algorithm**: Optimized TF-IDF calculation
+- **Scoring Algorithm**: BM25 (top 3 chunks)
 
 #### LLM Efficiency
-- **Model Selection**: LLaMA 3.3-70B for complex queries
-- **Fallback Strategy**: LLaMA 3.1-8B for faster responses
+- **Model**: gpt-oss-20b via Groq with low reasoning effort
+- **Key Rotation**: Groq keys rotated on rate limits
 - **Prompt Engineering**: Concise, context-focused prompts
 
 ---
@@ -772,7 +770,7 @@ the production setting.
 #### Advanced AI Capabilities
 - **Multi-modal Input**: Image and document upload support
 - **Voice Interaction**: Speech-to-text and text-to-speech
-- **Conversational Memory**: Context-aware multi-turn conversations
+- **Longer Conversational Memory**: Beyond the last 4 messages used today
 - **Personalized Responses**: User history and preference learning
 
 #### Platform Extensions
@@ -792,7 +790,7 @@ the production setting.
 #### AI Improvements
 - **Fine-tuning**: University-specific model training
 - **Hybrid Search**: Combining BM25 with semantic embeddings
-- **Evaluation Metrics**: Automated response quality assessment
+- **Larger Evaluation**: More questions and a user study with students
 - **Bias Detection**: Ensuring fair and inclusive responses
 
 #### User Experience
@@ -810,13 +808,12 @@ the production setting.
 #### Research Phase
 - **Problem Analysis**: Student advising challenges at Dunaújváros Egyetem
 - **Literature Review**: RAG systems, university chatbots, BM25 algorithms
-- **Requirements Gathering**: Stakeholder interviews and user surveys
+- **Requirements Gathering**: Survey of 23 international students (24–25 March 2026) and a review of the university website
 - **Architecture Design**: System design and technology selection
 
 #### Implementation Phase
-- **Agile Development**: Iterative development with regular testing
-- **Quality Assurance**: Comprehensive testing and validation
-- **Performance Optimization**: System tuning and optimization
+- **Iterative Development**: Built and first deployed in March 2026, then extended
+- **Checks**: Frontend build and the evaluation scripts in `evaluation/`
 
 #### Evaluation Phase
 - **Accuracy Benchmark**: 60-question test set (English and Hungarian, answerable and unanswerable)
@@ -829,15 +826,15 @@ the production setting.
 
 #### BM25 Implementation
 - **Algorithm Selection**: Chosen over embedding-based search for efficiency
-- **Hungarian Support**: Custom tokenization for accented characters
+- **Hungarian Support**: Tokenizer keeps Hungarian accented letters; optional English/Hungarian stopword removal
 - **Office Filtering**: Department-specific search optimization
-- **Performance Tuning**: Optimized for university document corpus
+- **Retrieval Variants**: baseline, stopwords and translate, compared in the evaluation
 
 #### RAG Pipeline
 - **Document Processing**: Custom chunking strategy for academic content
 - **Context Assembly**: Intelligent context selection and ranking
 - **Prompt Engineering**: University-specific system prompts
-- **Response Validation**: Source attribution and accuracy verification
+- **Source Attribution**: Each answer lists the documents it used
 
 ---
 
