@@ -775,7 +775,7 @@ the production setting.
 #### BM25 Implementation
 - **Algorithm Selection**: Chosen over embedding-based search for efficiency
 - **Hungarian Support**: Tokenizer keeps Hungarian accented letters; optional English/Hungarian stopword removal
-- **Office Filtering**: Department-specific search optimization
+- **Office Preference**: The whole knowledge base is always searched; the detected office only gets a small score boost
 - **Retrieval Variants**: baseline, stopwords and translate, compared in the evaluation
 
 #### RAG Pipeline
