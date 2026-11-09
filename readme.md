@@ -4,11 +4,11 @@
 
 ---
 
-## � Table of Contents
+## 📋 Table of Contents
 
 - [🎯 Project Overview](#-project-overview)
 - [🏗️ Architecture & Tech Stack](#️-architecture--tech-stack)
-- [⚡ Quick Start Guide](#-quick-start-guide)
+- [⚡ Setup and Running](#-setup-and-running)
 - [🤖 AI System Details](#-ai-system-details)
 - [👥 User Roles & Features](#-user-roles--features)
 - [📄 Document Management](#-document-management)
@@ -87,124 +87,114 @@ Student Query → Office Detection → BM25 Search → Context Retrieval → LLM
 
 ---
 
-## ⚡ Quick Start Guide
+## ⚡ Setup and Running
 
-### Prerequisites
+These steps take a fresh copy of the repository to a running system. Commands are run from the repository root (the folder containing `main.py`).
 
-- Python 3.11.9
-- Node.js 18+
-- Git
-- Supabase account (free tier)
-- Groq API key (free tier available)
+### 1. Prerequisites
 
-### 1. Clone and Setup
+| Requirement | Version | Needed for |
+|---|---|---|
+| Python | 3.11 (production runs 3.11.9, see `runtime.txt`) | Backend and evaluation scripts |
+| Node.js + npm | 18 or newer | Building the frontend |
+| Supabase project | free tier is enough | Database: users, logins, documents, logs |
+| Groq API key | free tier is enough ([console.groq.com](https://console.groq.com)) | LLM answers and translation |
+
+Without a Groq key the server still starts and the retrieval-only evaluation still runs, but chat answers fail. Without Supabase the server starts, but nobody can log in.
+
+### 2. Install
 
 ```bash
-git clone https://github.com/Gordon-Mensah/uniadvisor-ai.git
-cd uniadvisor-ai
+python3.11 -m venv venv
 ```
 
-### 2. Backend Setup
+```bash
+source venv/bin/activate        # Windows: venv\Scripts\activate
+```
 
 ```bash
-# Create virtual environment
-python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Mac/Linux
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Configure environment: create a .env file with the backend variables
-# listed under "Environment Variables" below (there is no .env.example)
 ```
 
-### 3. Frontend Setup
-
 ```bash
-# Install Node dependencies
 npm install
-
-# Configure environment: create a .env file with the frontend variables
-# listed under "Environment Variables" below
 ```
 
-### 4. Database Setup
-
-Create these tables in your Supabase database:
-
-```sql
--- Users and authentication
-CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
-  email TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  full_name TEXT,
-  role TEXT DEFAULT 'student', -- 'student', 'staff', 'admin'
-  major TEXT,
-  year_of_study TEXT,
-  nationality TEXT,
-  language_pref TEXT DEFAULT 'en',
-  active BOOLEAN DEFAULT true,
-  onboarding_done BOOLEAN DEFAULT false,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Document storage
-CREATE TABLE document_chunks (
-  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  text TEXT NOT NULL,
-  source TEXT NOT NULL,
-  office TEXT DEFAULT 'general',
-  page INT,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Chat and analytics
-CREATE TABLE chat_logs (
-  id SERIAL PRIMARY KEY,
-  question TEXT,
-  answer TEXT,
-  student_name TEXT,      -- no longer written (anonymous logs); kept for old rows
-  major TEXT,
-  year_of_study TEXT,
-  nationality TEXT,       -- no longer written (anonymous logs); kept for old rows
-  office_routed TEXT,
-  session_id TEXT,
-  asked_at TIMESTAMP DEFAULT NOW()
-);
-
--- Additional tables for full functionality
-CREATE TABLE announcements (id SERIAL PRIMARY KEY, text TEXT, type TEXT, active BOOLEAN DEFAULT true, scheduled_at TIMESTAMP, expires_at TIMESTAMP);
-CREATE TABLE audit_log (id SERIAL PRIMARY KEY, actor_email TEXT, actor_role TEXT, action TEXT, target TEXT, detail JSONB, created_at TIMESTAMP DEFAULT NOW());
-CREATE TABLE auth_tokens (id SERIAL PRIMARY KEY, user_id INT, token TEXT, expires_at TIMESTAMP);
-CREATE TABLE escalations (id SERIAL PRIMARY KEY, student_email TEXT, student_name TEXT, subject TEXT, message TEXT, status TEXT DEFAULT 'open', admin_reply TEXT, replied_by TEXT, replied_at TIMESTAMP);
-CREATE TABLE events (id SERIAL PRIMARY KEY, title TEXT, description TEXT, location TEXT, starts_at TIMESTAMP, ends_at TIMESTAMP, category TEXT, created_by TEXT);
-CREATE TABLE feedback (id SERIAL PRIMARY KEY, student_email TEXT, question TEXT, answer TEXT, rating TEXT, office TEXT);
-CREATE TABLE progress (id SERIAL PRIMARY KEY, student_email TEXT, task_key TEXT, label TEXT, done BOOLEAN DEFAULT false, done_at TIMESTAMP);
-CREATE TABLE survey_responses (id SERIAL PRIMARY KEY, responses JSONB, submitted_at TIMESTAMP DEFAULT NOW());
-```
-
-### 5. Run the Application
+### 3. Fill in `.env`
 
 ```bash
-# Both at once (backend on :8000, frontend on :3000)
-python start.py
+cp .env.example .env
 ```
 
-or separately:
+Edit `.env`. Every variable the app reads is listed there with a one-line comment. The required ones are:
+
+- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`: Supabase → Project Settings → API. The server refuses to start without the service-role key.
+- `JWT_SECRET`: any long random string, e.g. the output of `python -c "import secrets; print(secrets.token_urlsafe(64))"`. The server refuses to start without it.
+- `GROQ_API_KEY_1`: a Groq API key.
+- `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`: the same project URL and its **anon** key. They are read when the frontend is built.
+
+`.env` is listed in `.gitignore`, so it is never committed.
+
+### 4. Create the database tables
+
+In the Supabase dashboard, open the SQL editor and run, in this order:
+
+1. [`supabase/schema.sql`](supabase/schema.sql): creates all 14 tables the backend uses.
+2. [`supabase/rls_policies.sql`](supabase/rls_policies.sql): row-level security. The public anon key can only read active announcements; everything else goes through the backend.
+
+Then create the first admin account:
 
 ```bash
-# Terminal 1: Backend
-uvicorn main:app --reload --port 8000
+python hash_passwords.py "choose-a-strong-password"
+```
+
+Insert the printed hash with the SQL at the end of `supabase/schema.sql` (`role = 'admin'`). The other files in `supabase/` are migrations for databases created before `schema.sql` existed; a new database does not need them.
+
+### 5. Build the frontend
+
+```bash
+npm run build
+```
+
+This writes the React app to `dist/`, which the backend serves.
+
+### 6. Start the server
+
+```bash
+uvicorn main:app --port 8000
+```
+
+Open http://localhost:8000. `GET /health` should report `"status": "ok"` and `"supabase": true`. The interactive API documentation is at http://localhost:8000/docs.
+
+The knowledge base starts empty. Log in as the admin, open **Documents**, and upload `university_knowledge.txt` (it is filed under the General office). It is stored in the `document_chunks` table and loaded again on every start.
+
+For frontend development with hot reload, run `python start.py` instead. It starts the backend on port 8000 and the Vite dev server on port 3000.
+
+### 7. Run the evaluation
+
+The evaluation scripts in `evaluation/` index `university_knowledge.txt` themselves. They never read from or write to Supabase. See [Evaluation](#evaluation) for what they measure.
+
+```bash
+# Check the 60 test questions against the knowledge base (no API calls, seconds)
+python evaluation/evaluate.py --validate
 ```
 
 ```bash
-# Terminal 2: Frontend
-npm run dev
+# Retrieval metrics for the three retrieval variants (no API calls, under a minute)
+python evaluation/run_all.py --retrieval-only
 ```
 
-Visit `http://localhost:3000` for the application and `http://localhost:8000/docs` for API documentation.
+```bash
+# Full comparison: 3 retrieval variants on gpt-oss-20b, then the best on gpt-oss-120b (needs GROQ_API_KEY_1)
+python evaluation/run_all.py
+```
+
+```bash
+# Prompt experiment: default vs strict answer prompt (needs GROQ_API_KEY_1)
+python evaluation/run_all.py --prompt-experiment
+```
+
+Results are written to `evaluation/results/` (not committed). One configuration (60 questions) uses roughly 140,000 Groq tokens, and the Groq free tier allows 200,000 tokens per day per model. Run one configuration per day on a free key (`python evaluation/evaluate.py --retrieval translate --prompt default --model openai/gpt-oss-20b`), and raise `--delay` if you hit per-minute limits.
 
 ---
 
@@ -354,67 +344,24 @@ OFFICES = {
 
 ## 🗄️ Database Schema
 
-### Core Tables
+The full schema is in [`supabase/schema.sql`](supabase/schema.sql), and row-level security is in [`supabase/rls_policies.sql`](supabase/rls_policies.sql). See [Setup and Running](#-setup-and-running), step 4.
 
-#### Users Table
-```sql
-CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
-  email TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  full_name TEXT,
-  role TEXT DEFAULT 'student', -- 'student', 'staff', 'admin'
-  major TEXT,
-  year_of_study TEXT,
-  nationality TEXT,
-  language_pref TEXT DEFAULT 'en',
-  active BOOLEAN DEFAULT true,
-  onboarding_done BOOLEAN DEFAULT false,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-#### Document Chunks Table
-```sql
-CREATE TABLE document_chunks (
-  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  text TEXT NOT NULL,
-  source TEXT NOT NULL,
-  office TEXT DEFAULT 'general',
-  page INT,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_source ON document_chunks(source);
-CREATE INDEX idx_office ON document_chunks(office);
-```
-
-#### Chat Logs Table
-```sql
-CREATE TABLE chat_logs (
-  id SERIAL PRIMARY KEY,
-  question TEXT,
-  answer TEXT,
-  student_name TEXT,      -- no longer written (anonymous logs); kept for old rows
-  major TEXT,
-  year_of_study TEXT,
-  nationality TEXT,       -- no longer written (anonymous logs); kept for old rows
-  office_routed TEXT,
-  session_id TEXT,
-  asked_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-### Additional Tables
-
-- **announcements**: University-wide communications
-- **audit_log**: Security and compliance tracking
-- **auth_tokens**: JWT token management
-- **escalations**: Student-to-staff communication
-- **events**: Campus event scheduling
-- **feedback**: AI response quality ratings
-- **progress**: Student task completion tracking
-- **survey_responses**: Student feedback collection
+| Table | Purpose |
+|---|---|
+| `users` | Accounts (student / staff / admin), bcrypt password hashes, profile |
+| `auth_tokens` | Issued login tokens; logout marks them revoked |
+| `audit_log` | Document uploads/deletes and escalation replies |
+| `document_chunks` | The knowledge base: 400-word chunks with source document and office |
+| `chat_logs` | Anonymous question/answer log |
+| `office_analytics` | Questions and ratings per office |
+| `feedback` | Thumbs-up/down ratings of answers |
+| `announcements` | Staff announcements (info / warning / urgent, optionally scheduled) |
+| `announcement_reads` | Which student read or dismissed which announcement |
+| `staff_messages` | Messages from staff to a student or a group |
+| `escalations` | Questions passed to human staff, routed to an office |
+| `campus_events` | Campus events calendar |
+| `progress_tasks` | Each student's onboarding checklist |
+| `survey_responses` | The international student survey |
 
 ---
 
@@ -443,9 +390,8 @@ git push origin main
    - `RETRIEVAL_MODE` is set to `translate` by `render.yaml` itself
 
 #### 3. Database Setup
-- Create Supabase project
-- Run SQL schema from database section
-- Configure Row Level Security (RLS) policies
+- Create a Supabase project
+- Run `supabase/schema.sql`, then `supabase/rls_policies.sql`, in the SQL editor
 
 #### 4. Domain Configuration
 - Custom domain (optional)
@@ -453,6 +399,8 @@ git push origin main
 - CDN integration
 
 ### Environment Variables
+
+Every variable is listed, with a comment, in [`.env.example`](.env.example).
 
 #### Backend (.env)
 ```bash
