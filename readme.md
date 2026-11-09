@@ -673,24 +673,39 @@ Create campus events
 - **Pipeline Visualization**: Step-by-step AI processing
 - **Technology Breakdown**: Complete stack explanation
 
-### Quality Metrics
+### Evaluation
 
-#### Response Accuracy
-- **Source Verification**: All answers traceable to documents
-- **Language Consistency**: Strict language matching
-- **Office Relevance**: Correct department routing
+The evaluation lives in `evaluation/`. It runs questions through the same `rag.get_answer()`
+the app uses (`rag.py` and `main.py` are not modified for it).
 
-#### Performance Benchmarks
-- **Response Time**: < 3 seconds average
-- **Cache Effectiveness**: > 80% hit rate
-- **Uptime**: > 99.5% availability
+#### Test set (`evaluation/questions.json`)
+- **60 questions**: 42 in English, 18 in Hungarian
+- **48 answerable** (each with an expected answer, required key facts and the source passage on the
+  university website) and **12 unanswerable** (the system should say it does not know)
+- Categories: fees, visa, campus, health, offices, Neptun, housing, deadlines, admission, Moodle
 
-### User Testing
+#### Metrics (`evaluation/evaluate.py`)
+- **Retrieval**: Hit@k and MRR, i.e. whether the chunk holding the gold source passage was retrieved
+- **Answer correctness**: the answer contains every required key fact
+- **Abstention**: unanswerable questions correctly declined; answerable questions wrongly refused
+- **Response time** of `get_answer()` (retrieval + LLM call)
 
-#### SUS Methodology
-- **System Usability Scale**: Standardized user experience measurement
-- **Student Surveys**: Feedback collection and analysis
-- **Staff Evaluation**: Administrative interface assessment
+#### Configurations compared (`evaluation/run_all.py`)
+- **3 retrieval variants** (`RETRIEVAL_MODE`): `baseline`, `stopwords`, `translate`
+- **2 models** via Groq: `openai/gpt-oss-20b` for all three variants, then `openai/gpt-oss-120b`
+  on the best variant
+- **2 prompt modes** (`PROMPT_MODE`): `default` and `strict`, compared with `translate` retrieval
+  on gpt-oss-20b (`run_all.py --prompt-experiment`)
+- A retrieval-only run (`--retrieval-only`) compares the three variants without any API calls
+
+On gpt-oss-20b, `translate` gave the highest answer accuracy (77.1% vs 54.2% for `baseline`) and is
+the production setting.
+
+#### Manual check
+- `evaluation/make_review_sheet.py` turns a results CSV into an HTML page for judging each answer
+  by hand (`--blind` hides the automatic scores)
+- `evaluation/agreement.py` compares the manual judgements with the automatic scores
+  (accuracy, percentage agreement, Cohen's kappa) and lists the disagreements
 
 ---
 
@@ -800,15 +815,15 @@ Create campus events
 
 #### Implementation Phase
 - **Agile Development**: Iterative development with regular testing
-- **User-Centered Design**: Continuous feedback and usability testing
 - **Quality Assurance**: Comprehensive testing and validation
 - **Performance Optimization**: System tuning and optimization
 
 #### Evaluation Phase
-- **Usability Testing**: SUS methodology implementation
-- **Accuracy Assessment**: Response quality and source verification
-- **Performance Benchmarking**: Speed, reliability, and scalability testing
-- **User Acceptance**: Stakeholder feedback and adoption metrics
+- **Accuracy Benchmark**: 60-question test set (English and Hungarian, answerable and unanswerable)
+- **Retrieval Variants**: `baseline`, `stopwords` and `translate` BM25 retrieval compared
+- **Models**: gpt-oss-20b and gpt-oss-120b via Groq
+- **Prompt Modes**: `default` vs `strict` answer prompt
+- **Manual Check**: hand-marked answers compared with the automatic scores (Cohen's kappa)
 
 ### Technical Innovation
 
@@ -878,7 +893,7 @@ at least a 1 s delay (or the site's `Crawl-delay`), and back-off on HTTP 429/5xx
 
 ### Research Support
 - **Academic Advisors**: Guidance on research methodology
-- **Student Participants**: Usability testing and feedback
+- **Student Participants**: Survey responses on information needs
 - **Peer Reviewers**: Code review and quality assurance
 
 ---
